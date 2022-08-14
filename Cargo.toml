@@ -1,0 +1,14 @@
+[package]
+name = "pgen_client"
+version = "0.1.0"
+authors = ["quietvoid"]
+edition = "2021"
+
+[dependencies]
+clap = { version = "3.2.17", features = ["derive", "wrap_help", "deprecated"] }
+async-std = "1.12.0"
+eframe = { git = "https://github.com/emilk/egui.git" }
+
+log = "0.4.17"
+pretty_env_logger = "0.4"
+clap-verbosity-flag = "1.0.1"
