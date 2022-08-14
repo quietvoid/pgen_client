@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::pgen::controller::PGenController;
+use crate::pgen::{client::PGenCommand, controller::PGenController};
 
 impl PGenController {
     pub fn with_cc(self, cc: &eframe::CreationContext) -> Self {
@@ -32,7 +32,7 @@ impl eframe::App for PGenController {
 
                     let status_str = if self.state.connected_state.connected {
                         "Connected"
-                    } else if let Some(err) = &self.state.connected_state.connect_error {
+                    } else if let Some(err) = &self.state.connected_state.error {
                         err.as_str()
                     } else {
                         "Not connected"
@@ -41,9 +41,21 @@ impl eframe::App for PGenController {
                     ui.label(status_str);
                     ui.add_enabled_ui(!self.processing, |ui| {
                         if ui.button("Connect").clicked() {
-                            self.connect(ctx);
+                            self.pgen_command(ctx, PGenCommand::Connect);
+                        }
+
+                        if self.state.connected_state.connected && ui.button("Disconnect").clicked()
+                        {
+                            self.pgen_command(ctx, PGenCommand::Quit);
+                        }
+
+                        if self.state.connected_state.connected
+                            && ui.button("Shutdown device").clicked()
+                        {
+                            self.pgen_command(ctx, PGenCommand::Shutdown);
                         }
                     });
+                    ui.end_row();
                 });
 
             if self.processing {

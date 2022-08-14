@@ -52,7 +52,9 @@ impl PGenController {
 
             match res {
                 PGenCommandResponse::Busy => (),
-                PGenCommandResponse::Connect(state) => self.state.connected_state = state,
+                PGenCommandResponse::Connect(state)
+                | PGenCommandResponse::Quit(state)
+                | PGenCommandResponse::Shutdown(state) => self.state.connected_state = state,
             }
         }
 
@@ -61,13 +63,13 @@ impl PGenController {
         }
     }
 
-    pub fn connect(&mut self, ctx: &egui::Context) {
+    pub fn pgen_command(&mut self, ctx: &egui::Context, cmd: PGenCommand) {
         self.processing = true;
 
         let msg = PGenCommandMsg {
             egui_ctx: ctx.clone(),
             client: self.client.clone(),
-            cmd: PGenCommand::Connect,
+            cmd,
         };
 
         self.cmd_sender.try_send(msg).ok();

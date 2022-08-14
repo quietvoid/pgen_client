@@ -19,18 +19,22 @@ pub struct PGenClient {
 #[derive(Debug)]
 pub enum PGenCommand {
     Connect,
+    Quit,
+    Shutdown,
 }
 
 #[derive(Debug)]
 pub enum PGenCommandResponse {
     Busy,
     Connect(ConnectState),
+    Quit(ConnectState),
+    Shutdown(ConnectState),
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct ConnectState {
     pub connected: bool,
-    pub connect_error: Option<String>,
+    pub error: Option<String>,
 }
 
 impl PGenClient {
@@ -99,15 +103,66 @@ impl PGenClient {
 
         match &res {
             Ok(res) => self.connect_state.connected = *res,
-            Err(e) => self.connect_state.connect_error = Some(e.to_string()),
+            Err(e) => self.connect_state.error = Some(e.to_string()),
         };
 
         PGenCommandResponse::Connect(self.connect_state.clone())
     }
 
+    async fn disconnect(&mut self) -> PGenCommandResponse {
+        let res: Result<bool, io::Error> = task::block_on(async {
+            let connected = if self.connect_state.connected {
+                let res = self.send_tcp_command("QUIT").await?;
+
+                !res.is_empty()
+            } else {
+                log::info!("Already disconnected");
+                false
+            };
+
+            Ok(connected)
+        });
+
+        match &res {
+            Ok(still_connected) => {
+                self.connect_state.connected = *still_connected;
+
+                if *still_connected {
+                    log::debug!("Failed disconnecting connection");
+                } else {
+                    self.stream = None;
+                }
+            }
+            Err(e) => self.connect_state.error = Some(e.to_string()),
+        };
+
+        PGenCommandResponse::Quit(self.connect_state.clone())
+    }
+
+    async fn shutdown_device(&mut self) -> PGenCommandResponse {
+        let res: Result<bool, io::Error> = task::block_on(async {
+            let res = self.send_tcp_command("CMD:HALT").await?;
+            Ok(res == "OK:")
+        });
+
+        match &res {
+            Ok(res) => {
+                if *res {
+                    self.connect_state.connected = false;
+                    self.stream = None;
+                }
+            }
+            Err(e) => self.connect_state.error = Some(e.to_string()),
+        };
+
+        PGenCommandResponse::Shutdown(self.connect_state.clone())
+    }
+
     pub async fn send_generic_command(&mut self, cmd: PGenCommand) -> PGenCommandResponse {
         match cmd {
             PGenCommand::Connect => self.connect().await,
+            PGenCommand::Quit => self.disconnect().await,
+            PGenCommand::Shutdown => self.shutdown_device().await,
         }
     }
 }
