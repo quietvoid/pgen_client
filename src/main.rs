@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use async_std::stream::StreamExt;
 use async_std::task;
 use clap::Parser;
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 
 mod app;
 mod pgen;
@@ -14,7 +15,7 @@ use pgen::{client::PGenClient, controller::PGenController};
 #[clap(name = env!("CARGO_PKG_NAME"), about = "RPi PGenerator client", author = "quietvoid", version = env!("CARGO_PKG_VERSION"))]
 struct Opt {
     #[clap(flatten)]
-    verbose: clap_verbosity_flag::Verbosity,
+    verbose: Verbosity<InfoLevel>,
 
     #[clap(long, short = 'a', help = "IP Address of the PGenerator device")]
     ip: IpAddr,
@@ -36,29 +37,30 @@ fn main() {
         .init();
 
     let options = eframe::NativeOptions::default();
-    let (sender, mut receiver) = async_std::channel::bounded(5);
+    let (cmd_sender, mut cmd_receiver) = async_std::channel::bounded(5);
     let (state_sender, state_receiver) = async_std::channel::bounded(5);
 
     let controller = PGenController::new(
         PGenClient::new(SocketAddr::new(opt.ip, opt.port)),
-        sender,
+        cmd_sender,
         state_receiver,
     );
 
     // Command loop
     std::thread::spawn(move || {
         task::block_on(async {
-            while let Some(msg) = receiver.next().await {
+            while let Some(msg) = cmd_receiver.next().await {
                 log::trace!("Channel received PGen command to execute!");
 
-                if let Ok(ref mut client) = msg.client.try_lock() {
-                    let res = client.send_generic_command(msg.cmd).await;
-
-                    if state_sender.try_send(res).is_ok() {
-                        msg.egui_ctx.request_repaint();
-                    }
+                let res = if let Ok(ref mut client) = msg.client.try_lock() {
+                    client.send_generic_command(msg.cmd).await
                 } else {
                     log::trace!("Couldn't send command to client, already busy!");
+                    pgen::client::PGenCommandResponse::Busy
+                };
+
+                if state_sender.try_send(res).is_ok() {
+                    msg.egui_ctx.request_repaint();
                 }
             }
         });

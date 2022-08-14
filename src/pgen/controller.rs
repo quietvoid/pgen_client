@@ -25,7 +25,7 @@ pub struct PGenCommandMsg {
 
 #[derive(Debug, Default)]
 pub struct ControllerState {
-    connected_state: ConnectState,
+    pub connected_state: ConnectState,
 }
 
 impl PGenController {
@@ -44,13 +44,20 @@ impl PGenController {
     }
 
     pub fn check_responses(&mut self) {
+        let has_responses = !self.state_receiver.is_empty();
+
         while let Ok(res) = self.state_receiver.try_recv() {
             log::trace!("Received PGen command response!");
             println!("{:?}", res);
 
             match res {
+                PGenCommandResponse::Busy => (),
                 PGenCommandResponse::Connect(state) => self.state.connected_state = state,
             }
+        }
+
+        if has_responses {
+            self.processing = false;
         }
     }
 

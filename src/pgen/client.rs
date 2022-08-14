@@ -23,6 +23,7 @@ pub enum PGenCommand {
 
 #[derive(Debug)]
 pub enum PGenCommandResponse {
+    Busy,
     Connect(ConnectState),
 }
 
