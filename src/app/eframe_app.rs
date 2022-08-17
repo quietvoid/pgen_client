@@ -54,6 +54,12 @@ impl eframe::App for PGenController {
                         {
                             self.pgen_command(ctx, PGenCommand::Shutdown);
                         }
+
+                        if self.state.connected_state.connected
+                            && ui.button("Reboot device").clicked()
+                        {
+                            self.pgen_command(ctx, PGenCommand::Reboot);
+                        }
                     });
                     ui.end_row();
                 });

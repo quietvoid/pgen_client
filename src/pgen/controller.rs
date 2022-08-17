@@ -54,7 +54,8 @@ impl PGenController {
                 PGenCommandResponse::Busy => (),
                 PGenCommandResponse::Connect(state)
                 | PGenCommandResponse::Quit(state)
-                | PGenCommandResponse::Shutdown(state) => self.state.connected_state = state,
+                | PGenCommandResponse::Shutdown(state)
+                | PGenCommandResponse::Reboot(state) => self.state.connected_state = state,
             }
         }
 

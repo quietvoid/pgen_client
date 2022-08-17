@@ -21,6 +21,7 @@ pub enum PGenCommand {
     Connect,
     Quit,
     Shutdown,
+    Reboot,
 }
 
 #[derive(Debug)]
@@ -29,6 +30,7 @@ pub enum PGenCommandResponse {
     Connect(ConnectState),
     Quit(ConnectState),
     Shutdown(ConnectState),
+    Reboot(ConnectState),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -158,11 +160,31 @@ impl PGenClient {
         PGenCommandResponse::Shutdown(self.connect_state.clone())
     }
 
+    async fn reboot_device(&mut self) -> PGenCommandResponse {
+        let res: Result<bool, io::Error> = task::block_on(async {
+            let res = self.send_tcp_command("CMD:REBOOT").await?;
+            Ok(res == "OK:")
+        });
+
+        match &res {
+            Ok(res) => {
+                if *res {
+                    self.connect_state.connected = false;
+                    self.stream = None;
+                }
+            }
+            Err(e) => self.connect_state.error = Some(e.to_string()),
+        };
+
+        PGenCommandResponse::Reboot(self.connect_state.clone())
+    }
+
     pub async fn send_generic_command(&mut self, cmd: PGenCommand) -> PGenCommandResponse {
         match cmd {
             PGenCommand::Connect => self.connect().await,
             PGenCommand::Quit => self.disconnect().await,
             PGenCommand::Shutdown => self.shutdown_device().await,
+            PGenCommand::Reboot => self.reboot_device().await,
         }
     }
 }
