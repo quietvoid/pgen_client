@@ -1,6 +1,7 @@
 use std::net::IpAddr;
 use std::net::SocketAddr;
 
+use anyhow::{bail, Result};
 use async_std::stream::StreamExt;
 use async_std::task;
 use clap::Parser;
@@ -12,15 +13,15 @@ mod pgen;
 use pgen::{client::PGenClient, controller::PGenController};
 
 #[derive(Parser, Debug)]
-#[clap(name = env!("CARGO_PKG_NAME"), about = "RPi PGenerator client", author = "quietvoid", version = env!("CARGO_PKG_VERSION"))]
+#[command(name = env!("CARGO_PKG_NAME"), about = "RPi PGenerator client", author = "quietvoid", version = env!("CARGO_PKG_VERSION"))]
 struct Opt {
-    #[clap(flatten)]
+    #[command(flatten)]
     verbose: Verbosity<InfoLevel>,
 
-    #[clap(long, short = 'a', help = "IP Address of the PGenerator device")]
+    #[arg(long, short = 'a', help = "IP Address of the PGenerator device")]
     ip: IpAddr,
 
-    #[clap(
+    #[arg(
         long,
         short = 'p',
         help = "IP Address of the PGenerator device",
@@ -29,7 +30,7 @@ struct Opt {
     port: u16,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let opt = Opt::parse();
 
     pretty_env_logger::formatted_timed_builder()
@@ -66,9 +67,15 @@ fn main() {
         });
     });
 
-    eframe::run_native(
+    let res = eframe::run_native(
         "pgen_client",
         options,
         Box::new(|cc| Box::new(controller.with_cc(cc))),
     );
+
+    if let Err(e) = res {
+        bail!("Failed starting egui window: {}", e);
+    }
+
+    Ok(())
 }
