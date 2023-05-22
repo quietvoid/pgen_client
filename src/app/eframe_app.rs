@@ -14,8 +14,8 @@ impl PGenController {
 }
 
 impl eframe::App for PGenController {
-    fn clear_color(&self, visuals: &egui::Visuals) -> egui::Rgba {
-        visuals.window_fill().into()
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.window_fill().to_normalized_gamma_f32()
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {

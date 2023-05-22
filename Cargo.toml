@@ -5,10 +5,10 @@ authors = ["quietvoid"]
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.1.1", features = ["derive", "wrap_help", "deprecated"] }
+clap = { version = "4.3.0", features = ["derive", "wrap_help", "deprecated"] }
 async-std = "1.12.0"
 eframe = { git = "https://github.com/emilk/egui.git" }
 log = "0.4.17"
-pretty_env_logger = "0.4"
-clap-verbosity-flag = "2.0.0"
-anyhow = "1.0.68"
+pretty_env_logger = "0.5"
+clap-verbosity-flag = "2.0.1"
+anyhow = "1.0.71"
