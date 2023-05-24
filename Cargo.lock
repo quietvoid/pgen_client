@@ -1796,6 +1796,7 @@ name = "pgen_client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-io",
  "async-std",
  "clap",
  "clap-verbosity-flag",

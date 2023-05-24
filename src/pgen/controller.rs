@@ -9,18 +9,21 @@ pub struct PGenController {
     pub processing: bool,
     pub state: ControllerState,
 
-    client: Arc<Mutex<PGenClient>>,
+    pub(crate) client: Arc<Mutex<PGenClient>>,
 
     cmd_sender: Sender<PGenCommandMsg>,
     state_receiver: Receiver<PGenCommandResponse>,
+
+    // For waking up the UI thread
+    pub(crate) egui_ctx: Option<egui::Context>,
 }
 
 pub struct PGenCommandMsg {
-    // For waking up the UI thread
-    pub egui_ctx: egui::Context,
-
     pub client: Arc<Mutex<PGenClient>>,
     pub cmd: PGenCommand,
+
+    // For waking up the UI thread
+    pub egui_ctx: Option<egui::Context>,
 }
 
 #[derive(Debug, Default)]
@@ -36,11 +39,16 @@ impl PGenController {
     ) -> Self {
         Self {
             processing: false,
+            state: Default::default(),
             client: Arc::new(Mutex::new(client)),
             cmd_sender,
             state_receiver,
-            state: Default::default(),
+            egui_ctx: None,
         }
+    }
+
+    pub fn set_egui_context(&mut self, cc: &eframe::CreationContext) {
+        self.egui_ctx = Some(cc.egui_ctx.clone());
     }
 
     pub fn check_responses(&mut self) {
@@ -51,6 +59,10 @@ impl PGenController {
             println!("{:?}", res);
 
             match res {
+                PGenCommandResponse::NotConnected => self.state.connected_state.connected = false,
+                PGenCommandResponse::Alive(is_alive) => {
+                    self.state.connected_state.connected = is_alive
+                }
                 PGenCommandResponse::Busy => (),
                 PGenCommandResponse::Connect(state)
                 | PGenCommandResponse::Quit(state)
@@ -58,21 +70,44 @@ impl PGenController {
                 | PGenCommandResponse::Reboot(state) => self.state.connected_state = state,
             }
         }
+        if let Some(egui_ctx) = self.egui_ctx.as_ref() {
+            egui_ctx.request_repaint();
+        }
 
         if has_responses {
             self.processing = false;
         }
     }
 
-    pub fn pgen_command(&mut self, ctx: &egui::Context, cmd: PGenCommand) {
+    pub fn pgen_command(&mut self, cmd: PGenCommand) {
         self.processing = true;
 
         let msg = PGenCommandMsg {
-            egui_ctx: ctx.clone(),
             client: self.client.clone(),
             cmd,
+            egui_ctx: self.egui_ctx.as_ref().cloned(),
         };
 
         self.cmd_sender.try_send(msg).ok();
+    }
+
+    pub async fn reconnect(&mut self) {
+        if let Ok(ref mut client) = self.client.lock() {
+            // Don't auto connect
+            if !client.connect_state.connected {
+                return;
+            }
+
+            log::trace!("Reconnecting TCP socket stream");
+            let res = client.set_stream().await;
+            match &res {
+                Ok(_) => client.connect_state.connected = true,
+                Err(e) => client.connect_state.error = Some(e.to_string()),
+            };
+
+            if let Some(egui_ctx) = self.egui_ctx.as_ref() {
+                egui_ctx.request_repaint();
+            }
+        }
     }
 }

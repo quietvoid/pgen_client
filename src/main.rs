@@ -1,7 +1,12 @@
 use std::net::IpAddr;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Result};
+use app::PGenApp;
+use async_io::Timer;
+use async_std::channel::Receiver;
+use async_std::channel::Sender;
 use async_std::stream::StreamExt;
 use async_std::task;
 use clap::Parser;
@@ -10,6 +15,9 @@ use clap_verbosity_flag::{InfoLevel, Verbosity};
 mod app;
 mod pgen;
 
+use eframe::egui;
+use pgen::client::PGenCommandResponse;
+use pgen::controller::PGenCommandMsg;
 use pgen::{client::PGenClient, controller::PGenController};
 
 #[derive(Parser, Debug)]
@@ -38,7 +46,7 @@ fn main() -> Result<()> {
         .init();
 
     let options = eframe::NativeOptions::default();
-    let (cmd_sender, mut cmd_receiver) = async_std::channel::bounded(5);
+    let (cmd_sender, cmd_receiver) = async_std::channel::bounded(5);
     let (state_sender, state_receiver) = async_std::channel::bounded(5);
 
     let controller = PGenController::new(
@@ -46,31 +54,30 @@ fn main() -> Result<()> {
         cmd_sender,
         state_receiver,
     );
+    let controller = Arc::new(Mutex::new(controller));
 
-    // Command loop
-    std::thread::spawn(move || {
-        task::block_on(async {
-            while let Some(msg) = cmd_receiver.next().await {
-                log::trace!("Channel received PGen command to execute!");
+    {
+        let controller = controller.clone();
 
-                let res = if let Ok(ref mut client) = msg.client.try_lock() {
-                    client.send_generic_command(msg.cmd).await
-                } else {
-                    log::trace!("Couldn't send command to client, already busy!");
-                    pgen::client::PGenCommandResponse::Busy
-                };
-
-                if state_sender.try_send(res).is_ok() {
-                    msg.egui_ctx.request_repaint();
-                }
-            }
+        // Tasks
+        std::thread::spawn(move || {
+            init_reconnect_task(controller.clone());
+            init_heartbeat_task(controller.clone());
+            init_command_loop(cmd_receiver, state_sender);
         });
-    });
+    }
 
     let res = eframe::run_native(
         "pgen_client",
         options,
-        Box::new(|cc| Box::new(controller.with_cc(cc))),
+        Box::new(|cc| {
+            // Set the global theme, default to dark mode
+            let mut global_visuals = egui::style::Visuals::dark();
+            global_visuals.window_shadow = egui::epaint::Shadow::small_light();
+            cc.egui_ctx.set_visuals(global_visuals);
+
+            Box::new(PGenApp::new(cc, controller))
+        }),
     );
 
     if let Err(e) = res {
@@ -78,4 +85,52 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn init_reconnect_task(controller: Arc<Mutex<PGenController>>) {
+    task::spawn(async move {
+        let reconnect_period = std::time::Duration::from_secs(900);
+        while Timer::interval(reconnect_period).next().await.is_some() {
+            if let Ok(ref mut controller) = controller.lock() {
+                task::block_on(async {
+                    controller.reconnect().await;
+                });
+            }
+        }
+    });
+}
+
+fn init_heartbeat_task(controller: Arc<Mutex<PGenController>>) {
+    task::spawn(async move {
+        let heartbeat_period = std::time::Duration::from_secs(30);
+        while Timer::interval(heartbeat_period).next().await.is_some() {
+            if let Ok(ref mut controller) = controller.lock() {
+                controller.pgen_command(pgen::client::PGenCommand::IsAlive);
+            }
+        }
+    });
+}
+
+fn init_command_loop(
+    mut cmd_receiver: Receiver<PGenCommandMsg>,
+    state_sender: Sender<PGenCommandResponse>,
+) {
+    task::block_on(async {
+        while let Some(msg) = cmd_receiver.next().await {
+            log::trace!("Channel received PGen command to execute: {:?}", msg.cmd);
+
+            let res = if let Ok(ref mut client) = msg.client.try_lock() {
+                client.send_generic_command(msg.cmd).await
+            } else {
+                log::trace!("Couldn't send command to client, already busy!");
+                pgen::client::PGenCommandResponse::Busy
+            };
+
+            if state_sender.try_send(res).is_ok() {
+                if let Some(egui_ctx) = msg.egui_ctx {
+                    egui_ctx.request_repaint();
+                }
+            }
+        }
+    });
 }

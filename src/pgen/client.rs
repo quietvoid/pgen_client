@@ -18,6 +18,7 @@ pub struct PGenClient {
 
 #[derive(Debug)]
 pub enum PGenCommand {
+    IsAlive,
     Connect,
     Quit,
     Shutdown,
@@ -26,7 +27,9 @@ pub enum PGenCommand {
 
 #[derive(Debug)]
 pub enum PGenCommandResponse {
+    NotConnected,
     Busy,
+    Alive(bool),
     Connect(ConnectState),
     Quit(ConnectState),
     Shutdown(ConnectState),
@@ -59,7 +62,11 @@ impl PGenClient {
     }
 
     async fn send_tcp_command(&mut self, cmd: &str) -> io::Result<String> {
-        let stream = self.stream.as_mut().expect("Missing TCP socket stream");
+        if self.stream.is_none() {
+            return Ok(String::from("Not connected to TCP socket"));
+        }
+
+        let stream = self.stream.as_mut().unwrap();
 
         log::debug!("Sending command {}", cmd);
 
@@ -81,24 +88,49 @@ impl PGenClient {
         .await
     }
 
+    async fn send_heartbeat(&mut self) -> PGenCommandResponse {
+        let is_alive = if let Ok(res) = self.send_tcp_command("IS_ALIVE").await {
+            res == "ALIVE"
+        } else {
+            false
+        };
+
+        self.connect_state.connected = is_alive;
+
+        PGenCommandResponse::Alive(is_alive)
+    }
+
+    pub async fn set_stream(&mut self) -> Result<(), io::Error> {
+        if self.stream.is_some() {
+            self.disconnect().await;
+        }
+
+        let stream = io::timeout(
+            Duration::from_secs(10),
+            TcpStream::connect(self.socket_addr),
+        )
+        .await?;
+        self.stream = Some(stream);
+
+        let stream = self.stream.as_mut().unwrap();
+        log::info!("Connected to {}", &stream.peer_addr()?);
+
+        Ok(())
+    }
+
     async fn connect(&mut self) -> PGenCommandResponse {
+        self.connect_state.error = None;
+
         let res: Result<bool, io::Error> = task::block_on(async {
             if !self.connect_state.connected {
-                let stream = io::timeout(
-                    Duration::from_secs(10),
-                    TcpStream::connect(self.socket_addr),
-                )
-                .await?;
-                self.stream = Some(stream);
-
-                let stream = self.stream.as_mut().expect("Missing TCP socket stream");
-                log::info!("Connected to {}", &stream.peer_addr()?);
+                self.set_stream().await?;
             } else {
                 log::info!("Already connected, requesting heartbeat");
             }
 
-            let res = self.send_tcp_command("IS_ALIVE").await?;
-            let is_alive = res == "ALIVE";
+            let PGenCommandResponse::Alive(is_alive) = self.send_heartbeat().await else {
+                unreachable!()
+            };
 
             Ok(is_alive)
         });
@@ -180,7 +212,12 @@ impl PGenClient {
     }
 
     pub async fn send_generic_command(&mut self, cmd: PGenCommand) -> PGenCommandResponse {
+        if self.stream.is_none() && !matches!(cmd, PGenCommand::Connect) {
+            return PGenCommandResponse::NotConnected;
+        }
+
         match cmd {
+            PGenCommand::IsAlive => self.send_heartbeat().await,
             PGenCommand::Connect => self.connect().await,
             PGenCommand::Quit => self.disconnect().await,
             PGenCommand::Shutdown => self.shutdown_device().await,

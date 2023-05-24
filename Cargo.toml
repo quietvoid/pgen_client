@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.3.0", features = ["derive", "wrap_help", "deprecated"] }
 async-std = "1.12.0"
+async-io = "*"
 eframe = { git = "https://github.com/emilk/egui.git" }
 log = "0.4.17"
 pretty_env_logger = "0.5"

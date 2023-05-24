@@ -1,72 +1,17 @@
 use eframe::egui;
 
-use crate::pgen::{client::PGenCommand, controller::PGenController};
+use super::PGenApp;
 
-impl PGenController {
-    pub fn with_cc(self, cc: &eframe::CreationContext) -> Self {
-        // Set the global theme, default to dark mode
-        let mut global_visuals = egui::style::Visuals::dark();
-        global_visuals.window_shadow = egui::epaint::Shadow::small_light();
-        cc.egui_ctx.set_visuals(global_visuals);
-
-        self
-    }
-}
-
-impl eframe::App for PGenController {
+impl eframe::App for PGenApp {
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         visuals.window_fill().to_normalized_gamma_f32()
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.check_responses();
+        if let Ok(ref mut controller) = self.controller.lock() {
+            controller.check_responses();
 
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            egui::widgets::global_dark_light_mode_switch(ui);
-
-            egui::Grid::new("prefs_grid")
-                .num_columns(3)
-                .spacing([8.0, 4.0])
-                .show(ui, |ui| {
-                    ui.label("Status");
-
-                    let status_str = if self.state.connected_state.connected {
-                        "Connected"
-                    } else if let Some(err) = &self.state.connected_state.error {
-                        err.as_str()
-                    } else {
-                        "Not connected"
-                    };
-
-                    ui.label(status_str);
-                    ui.add_enabled_ui(!self.processing, |ui| {
-                        if ui.button("Connect").clicked() {
-                            self.pgen_command(ctx, PGenCommand::Connect);
-                        }
-
-                        if self.state.connected_state.connected && ui.button("Disconnect").clicked()
-                        {
-                            self.pgen_command(ctx, PGenCommand::Quit);
-                        }
-
-                        if self.state.connected_state.connected
-                            && ui.button("Shutdown device").clicked()
-                        {
-                            self.pgen_command(ctx, PGenCommand::Shutdown);
-                        }
-
-                        if self.state.connected_state.connected
-                            && ui.button("Reboot device").clicked()
-                        {
-                            self.pgen_command(ctx, PGenCommand::Reboot);
-                        }
-                    });
-                    ui.end_row();
-                });
-
-            if self.processing {
-                ui.add(egui::Spinner::new().size(32.0));
-            }
-        });
+            self.set_top_bar(ctx, controller);
+        }
     }
 }
