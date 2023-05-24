@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{bail, Result};
@@ -11,31 +9,19 @@ use async_std::stream::StreamExt;
 use async_std::task;
 use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
+use eframe::egui::{self, TextStyle};
 
 mod app;
 mod pgen;
 
-use eframe::egui;
-use pgen::client::PGenCommandResponse;
-use pgen::controller::PGenCommandMsg;
-use pgen::{client::PGenClient, controller::PGenController};
+use pgen::commands::{PGenCommand, PGenCommandResponse};
+use pgen::controller::{PGenCommandMsg, PGenController};
 
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_PKG_NAME"), about = "RPi PGenerator client", author = "quietvoid", version = env!("CARGO_PKG_VERSION"))]
 struct Opt {
     #[command(flatten)]
     verbose: Verbosity<InfoLevel>,
-
-    #[arg(long, short = 'a', help = "IP Address of the PGenerator device")]
-    ip: IpAddr,
-
-    #[arg(
-        long,
-        short = 'p',
-        help = "IP Address of the PGenerator device",
-        default_value = "85"
-    )]
-    port: u16,
 }
 
 fn main() -> Result<()> {
@@ -49,11 +35,7 @@ fn main() -> Result<()> {
     let (cmd_sender, cmd_receiver) = async_std::channel::bounded(5);
     let (state_sender, state_receiver) = async_std::channel::bounded(5);
 
-    let controller = PGenController::new(
-        PGenClient::new(SocketAddr::new(opt.ip, opt.port)),
-        cmd_sender,
-        state_receiver,
-    );
+    let controller = PGenController::new(cmd_sender, state_receiver);
     let controller = Arc::new(Mutex::new(controller));
 
     {
@@ -75,6 +57,11 @@ fn main() -> Result<()> {
             let mut global_visuals = egui::style::Visuals::dark();
             global_visuals.window_shadow = egui::epaint::Shadow::small_light();
             cc.egui_ctx.set_visuals(global_visuals);
+
+            let mut style = (*cc.egui_ctx.style()).clone();
+            style.text_styles.get_mut(&TextStyle::Body).unwrap().size = 16.0;
+            style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 16.0;
+            cc.egui_ctx.set_style(style);
 
             Box::new(PGenApp::new(cc, controller))
         }),
@@ -105,7 +92,9 @@ fn init_heartbeat_task(controller: Arc<Mutex<PGenController>>) {
         let heartbeat_period = std::time::Duration::from_secs(30);
         while Timer::interval(heartbeat_period).next().await.is_some() {
             if let Ok(ref mut controller) = controller.lock() {
-                controller.pgen_command(pgen::client::PGenCommand::IsAlive);
+                if controller.state.connected_state.connected {
+                    controller.pgen_command(PGenCommand::IsAlive);
+                }
             }
         }
     });
@@ -123,7 +112,7 @@ fn init_command_loop(
                 client.send_generic_command(msg.cmd).await
             } else {
                 log::trace!("Couldn't send command to client, already busy!");
-                pgen::client::PGenCommandResponse::Busy
+                PGenCommandResponse::Busy
             };
 
             if state_sender.try_send(res).is_ok() {
