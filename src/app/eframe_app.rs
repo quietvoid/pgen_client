@@ -1,4 +1,4 @@
-use eframe::egui;
+use eframe::egui::{self, Key};
 
 use super::PGenApp;
 
@@ -7,11 +7,46 @@ impl eframe::App for PGenApp {
         visuals.window_fill().to_normalized_gamma_f32()
     }
 
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if let Ok(ref mut controller) = self.controller.lock() {
-            controller.check_responses();
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if self.allowed_to_close {
+                frame.close();
+            }
 
-            self.set_top_bar(ctx, controller);
+            if let Ok(ref mut controller) = self.controller.lock() {
+                if ui.input(|i| i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)) {
+                    controller.disconnect();
+                    self.requested_close = true;
+                }
+                if self.requested_close
+                    && !self.allowed_to_close
+                    && !controller.has_messages_queued()
+                {
+                    // Save before close as we have the lock
+                    if let Some(storage) = frame.storage_mut() {
+                        eframe::set_value(storage, eframe::APP_KEY, &controller.state);
+                    }
+
+                    log::trace!("Nothing queued, closing app");
+                    self.allowed_to_close = true;
+                }
+
+                self.set_top_bar(ctx, controller);
+                self.add_pattern_config(ctx, controller);
+
+                controller.check_responses();
+            }
+        });
+    }
+
+    fn on_close_event(&mut self) -> bool {
+        self.allowed_to_close
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        // Don't block here
+        if let Ok(controller) = &self.controller.try_lock() {
+            eframe::set_value(storage, eframe::APP_KEY, &controller.state);
         }
     }
 }
