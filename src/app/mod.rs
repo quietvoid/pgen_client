@@ -173,11 +173,12 @@ impl PGenApp {
         let old_preset_position = controller.state.pattern_config.preset_position;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::Grid::new("output_conf_grid").show(ui, |ui| {
-                let output_config = connected
-                    .then_some(controller.state.output_config.as_ref())
-                    .flatten();
-                if let Some(output_cfg) = output_config {
+            let output_config = connected
+                .then_some(controller.state.output_config.as_ref())
+                .flatten();
+
+            if let Some(output_cfg) = output_config {
+                egui::Grid::new("output_conf_grid").show(ui, |ui| {
                     let (res_w, res_h) = output_cfg.resolution;
                     let dynamic_range_str = output_cfg.dynamic_range.to_str();
                     let pixel_range = if output_cfg.limited_range {
@@ -197,10 +198,15 @@ impl PGenApp {
 
                     ui.label(format!("Dynamic Range: {dynamic_range_str}"));
                     ui.end_row();
-                }
-            });
+                });
 
-            ui.separator();
+                ui.separator();
+            }
+
+            if output_config.is_some() {
+                ui.separator();
+            }
+
             egui::Grid::new("pattern_conf_grid")
                 .spacing([4.0, 4.0])
                 .show(ui, |ui| {
