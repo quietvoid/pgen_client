@@ -21,7 +21,6 @@ pub(crate) struct PGenApp {
 impl PGenApp {
     pub fn new(cc: &eframe::CreationContext, controller: Arc<Mutex<PGenController>>) -> Self {
         {
-            let controller = controller.clone();
             let mut controller_mutex = controller.lock().unwrap();
 
             controller_mutex.set_egui_context(cc);
