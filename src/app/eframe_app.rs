@@ -9,8 +9,11 @@ impl eframe::App for PGenApp {
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
+            if ctx.input(|i| i.viewport().close_requested()) && !self.allowed_to_close {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            }
             if self.allowed_to_close {
-                frame.close();
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
 
             if let Ok(ref mut controller) = self.controller.lock() {
@@ -37,10 +40,6 @@ impl eframe::App for PGenApp {
                 controller.check_responses();
             }
         });
-    }
-
-    fn on_close_event(&mut self) -> bool {
-        self.allowed_to_close
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
