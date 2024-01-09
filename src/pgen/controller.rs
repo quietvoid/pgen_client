@@ -1,11 +1,13 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
-use async_std::channel::{Receiver, Sender};
+use async_std::channel::Sender;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
+
+use crate::app::commands::AppCommandTx;
 
 use super::{
     client::{ConnectState, PGenClient, PGenTestPattern},
@@ -14,14 +16,14 @@ use super::{
     scale_8b_rgb_to_10b, scale_rgb_into_range, ColorFormat, DynamicRange,
 };
 
+pub type PGenControllerHandle = Arc<RwLock<PGenController>>;
+
 #[derive(Debug)]
 pub struct PGenController {
     pub state: ControllerState,
 
     pub(crate) client: Arc<Mutex<PGenClient>>,
-
-    cmd_sender: Sender<PGenCommandMsg>,
-    state_receiver: Receiver<PGenCommandResponse>,
+    app_sender: Sender<AppCommandTx>,
 
     // For waking up the UI thread
     pub(crate) egui_ctx: Option<egui::Context>,
@@ -35,7 +37,7 @@ pub struct PGenCommandMsg {
     pub egui_ctx: Option<egui::Context>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ControllerState {
     pub socket_addr: SocketAddr,
     pub editing_socket: (String, String),
@@ -57,18 +59,14 @@ pub struct PGenOutputConfig {
 }
 
 impl PGenController {
-    pub fn new(
-        cmd_sender: Sender<PGenCommandMsg>,
-        state_receiver: Receiver<PGenCommandResponse>,
-    ) -> Self {
+    pub fn new(app_sender: Sender<AppCommandTx>) -> Self {
         let state: ControllerState = Default::default();
         let client = PGenClient::new(state.socket_addr);
 
         Self {
             state,
+            app_sender,
             client: Arc::new(Mutex::new(client)),
-            cmd_sender,
-            state_receiver,
             egui_ctx: Default::default(),
         }
     }
@@ -81,36 +79,20 @@ impl PGenController {
         self.state = state;
     }
 
-    pub fn has_messages_queued(&self) -> bool {
-        !self.cmd_sender.is_empty() || !self.state_receiver.is_empty()
-    }
+    pub fn handle_pgen_response(&mut self, res: PGenCommandResponse) {
+        log::trace!("Received PGen command response: {:?}", res);
 
-    pub fn processing(&self) -> bool {
-        self.has_messages_queued()
-    }
+        match res {
+            PGenCommandResponse::NotConnected => self.state.connected_state.connected = false,
+            PGenCommandResponse::Busy | PGenCommandResponse::Ok(_) => (),
+            PGenCommandResponse::Errored(e) => self.state.connected_state.error = Some(e),
+            PGenCommandResponse::Alive(is_alive) => self.state.connected_state.connected = is_alive,
+            PGenCommandResponse::Connect(state)
+            | PGenCommandResponse::Quit(state)
+            | PGenCommandResponse::Shutdown(state)
+            | PGenCommandResponse::Reboot(state) => self.state.connected_state = state,
 
-    pub fn check_responses(&mut self) {
-        while let Ok(res) = self.state_receiver.try_recv() {
-            log::trace!("Received PGen command response: {:?}", res);
-
-            match res {
-                PGenCommandResponse::NotConnected => self.state.connected_state.connected = false,
-                PGenCommandResponse::Busy | PGenCommandResponse::Ok(_) => (),
-                PGenCommandResponse::Errored(e) => self.state.connected_state.error = Some(e),
-                PGenCommandResponse::Alive(is_alive) => {
-                    self.state.connected_state.connected = is_alive
-                }
-                PGenCommandResponse::Connect(state)
-                | PGenCommandResponse::Quit(state)
-                | PGenCommandResponse::Shutdown(state)
-                | PGenCommandResponse::Reboot(state) => self.state.connected_state = state,
-
-                PGenCommandResponse::MultipleCommandInfo(res) => self.parse_commands_info(res),
-            }
-        }
-
-        if let Some(egui_ctx) = self.egui_ctx.as_ref() {
-            egui_ctx.request_repaint();
+            PGenCommandResponse::MultipleCommandInfo(res) => self.parse_commands_info(res),
         }
     }
 
@@ -121,7 +103,7 @@ impl PGenController {
             egui_ctx: self.egui_ctx.as_ref().cloned(),
         };
 
-        self.cmd_sender.try_send(msg).ok();
+        self.app_sender.try_send(AppCommandTx::Pgen(msg)).ok();
     }
 
     pub fn fetch_output_info(&self) {
@@ -223,10 +205,14 @@ impl PGenController {
             .unwrap_or_default()
     }
 
-    pub fn send_pattern(&self) {
+    pub fn send_pattern(&self, pattern: PGenTestPattern) {
+        self.pgen_command(PGenCommand::TestPattern(pattern));
+    }
+
+    pub fn send_current_pattern(&self) {
         let pattern =
             PGenTestPattern::from_config(self.get_color_format(), &self.state.pattern_config);
-        self.pgen_command(PGenCommand::TestPattern(pattern));
+        self.send_pattern(pattern);
     }
 
     pub fn set_blank(&self) {

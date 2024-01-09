@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub mod client;
 pub mod commands;
 pub mod controller;
+pub mod daemon;
+pub mod interfaces;
 pub mod pattern_config;
 
 pub fn compute_rgb_range(limited_range: bool, depth: u8) -> RangeInclusive<u16> {
