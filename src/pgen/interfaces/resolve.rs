@@ -13,7 +13,7 @@ pub async fn resolve_connect_and_set_tcp_stream(generator_client: GeneratorClien
     match TcpStream::connect(addr) {
         Ok(stream) => {
             {
-                let mut client = generator_client.lock().await;
+                let mut client = generator_client.write().await;
                 client.stream.replace(BufReader::new(stream));
             }
 
@@ -32,7 +32,7 @@ pub fn handle_resolve_pattern_message(controller: PGenControllerHandle, msg: &st
 
     match pattern {
         Ok(pattern) => {
-            if let Ok(controller) = controller.read() {
+            if let Ok(mut controller) = controller.write() {
                 let config = pattern.to_pgen(controller.state.pattern_config);
                 let pgen_pattern =
                     PGenTestPattern::from_config(controller.get_color_format(), &config);

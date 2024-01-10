@@ -4,10 +4,10 @@ use eframe::egui::{self, Layout, Sense};
 use eframe::epaint::{Color32, Stroke, Vec2};
 
 use crate::pgen::commands::PGenCommand;
-use crate::pgen::compute_rgb_range;
 use crate::pgen::controller::PGenController;
 use crate::pgen::interfaces::GeneratorInfo;
 use crate::pgen::pattern_config::{TestPatternPosition, TestPatternSize};
+use crate::pgen::{compute_rgb_range, rgb_10b_to_8b};
 
 use self::commands::{AppCommandRx, AppCommandTx, PGenAppContext};
 use self::eframe_app::PGenAppSavedState;
@@ -261,19 +261,11 @@ impl PGenApp {
         let old_limited_range = controller.state.pattern_config.limited_range;
         let rgb_range = compute_rgb_range(old_limited_range, old_depth);
 
-        let old_rgb_8bit = controller
-            .state
-            .pattern_config
-            .patch_colour
-            .map(|c| (c as f32 / 4.0).round() as u8);
-        let mut rgb_8bit = old_rgb_8bit;
+        let old_rgb = rgb_10b_to_8b(controller.state.pattern_config.patch_colour);
+        let mut rgb = old_rgb;
 
-        let old_bg_rgb_8bit = controller
-            .state
-            .pattern_config
-            .background_colour
-            .map(|c| (c as f32 / 4.0).round() as u8);
-        let mut bg_rgb_8bit = old_bg_rgb_8bit;
+        let old_bg_rgb = rgb_10b_to_8b(controller.state.pattern_config.background_colour);
+        let mut bg_rgb = old_bg_rgb;
 
         egui::Grid::new("pattern_conf_grid")
             .spacing([4.0, 4.0])
@@ -362,7 +354,7 @@ impl PGenApp {
 
                 ui.label("Patch colour");
                 ui.centered_and_justified(|ui| {
-                    ui.color_edit_button_srgb(&mut rgb_8bit);
+                    ui.color_edit_button_srgb(&mut rgb);
                 });
                 ui.horizontal(|ui| {
                     controller
@@ -378,7 +370,7 @@ impl PGenApp {
 
                 ui.label("Background colour");
                 ui.centered_and_justified(|ui| {
-                    ui.color_edit_button_srgb(&mut bg_rgb_8bit);
+                    ui.color_edit_button_srgb(&mut bg_rgb);
                 });
                 ui.horizontal(|ui| {
                     controller
@@ -404,11 +396,11 @@ impl PGenApp {
                 ui.end_row();
             });
 
-        if old_rgb_8bit != rgb_8bit {
-            controller.set_config_colour_from_8bit_srgb(rgb_8bit, false);
+        if old_rgb != rgb {
+            controller.set_config_colour_from_srgb(rgb, false);
         }
-        if old_bg_rgb_8bit != bg_rgb_8bit {
-            controller.set_config_colour_from_8bit_srgb(bg_rgb_8bit, true);
+        if old_bg_rgb != bg_rgb {
+            controller.set_config_colour_from_srgb(bg_rgb, true);
         }
 
         if old_depth != controller.state.pattern_config.bit_depth

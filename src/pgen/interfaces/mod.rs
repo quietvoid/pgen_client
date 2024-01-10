@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use async_std::{sync::Mutex, task};
+use async_std::{sync::RwLock, task};
 use async_stream::stream;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ pub struct TcpGeneratorClient {
     pub interface: GeneratorInterface,
     pub buf: Vec<u8>,
 }
-pub type GeneratorClientHandle = Arc<Mutex<TcpGeneratorClient>>;
+pub type GeneratorClientHandle = Arc<RwLock<TcpGeneratorClient>>;
 
 impl TcpGeneratorClient {
     pub fn get_stream(client: GeneratorClientHandle) -> impl Stream<Item = String> {
@@ -41,7 +41,7 @@ impl TcpGeneratorClient {
 
                 let mut res = None;
                 let mut err = None;
-                if let Some(mut client) = client.try_lock() {
+                if let Some(mut client) = client.try_write() {
                     if let Some(tcp_stream) = client.stream.as_mut() {
                         let mut header = [0; 4];
 
@@ -72,12 +72,12 @@ impl TcpGeneratorClient {
     async fn handle_error(error_kind: ErrorKind, client: GeneratorClientHandle) {
         match error_kind {
             ErrorKind::UnexpectedEof => {
-                let mut client = client.lock().await;
+                let mut client = client.write().await;
                 let _ = client.stream.take();
             }
             _ => {
                 let interface = {
-                    let mut client = client.lock().await;
+                    let mut client = client.write().await;
                     let reader = client.stream.take().unwrap();
                     let stream = reader.into_inner();
                     stream.shutdown(Shutdown::Both).ok();

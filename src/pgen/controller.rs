@@ -124,6 +124,12 @@ impl PGenController {
         }
     }
 
+    pub fn update_ui(&self) {
+        if let Some(egui_ctx) = self.egui_ctx.as_ref() {
+            egui_ctx.request_repaint();
+        }
+    }
+
     pub async fn reconnect(&mut self) {
         if let Ok(ref mut client) = self.client.lock() {
             // Don't auto connect
@@ -141,14 +147,12 @@ impl PGenController {
                 Err(e) => client.connect_state.error = Some(e.to_string()),
             };
 
-            if let Some(egui_ctx) = self.egui_ctx.as_ref() {
-                egui_ctx.request_repaint();
-            }
+            self.update_ui();
         }
     }
 
-    pub fn set_config_colour_from_8bit_srgb(&mut self, srgb_8bit: [u8; 3], background: bool) {
-        let scaled_rgb = srgb_8bit.map(|c| {
+    pub fn set_config_colour_from_srgb(&mut self, srgb: [u8; 3], background: bool) {
+        let rgb_10b = srgb.map(|c| {
             scale_8b_rgb_to_10b(
                 c as u16,
                 2.0,
@@ -159,9 +163,9 @@ impl PGenController {
         });
 
         if background {
-            self.state.pattern_config.background_colour = scaled_rgb;
+            self.state.pattern_config.background_colour = rgb_10b;
         } else {
-            self.state.pattern_config.patch_colour = scaled_rgb;
+            self.state.pattern_config.patch_colour = rgb_10b;
         }
     }
 
@@ -205,14 +209,19 @@ impl PGenController {
             .unwrap_or_default()
     }
 
-    pub fn send_pattern(&self, pattern: PGenTestPattern) {
-        self.pgen_command(PGenCommand::TestPattern(pattern));
+    pub fn send_pattern(&mut self, pattern: PGenTestPattern) {
+        // Only send non repeated patterns
+        if self.state.pattern_config.patch_colour != pattern.rgb {
+            self.state.pattern_config.patch_colour = pattern.rgb;
+            self.state.pattern_config.background_colour = pattern.bg_rgb;
+            self.pgen_command(PGenCommand::TestPattern(pattern));
+        }
     }
 
-    pub fn send_current_pattern(&self) {
+    pub fn send_current_pattern(&mut self) {
         let pattern =
             PGenTestPattern::from_config(self.get_color_format(), &self.state.pattern_config);
-        self.send_pattern(pattern);
+        self.pgen_command(PGenCommand::TestPattern(pattern));
     }
 
     pub fn set_blank(&self) {

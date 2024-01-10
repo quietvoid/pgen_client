@@ -72,6 +72,10 @@ pub fn scale_8b_rgb_to_10b(
     val.round() as u16
 }
 
+pub fn rgb_10b_to_8b(rgb: [u16; 3]) -> [u8; 3] {
+    rgb.map(|c| (c / 4) as u8)
+}
+
 #[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
 pub enum DynamicRange {
     #[default]

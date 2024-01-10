@@ -1,7 +1,7 @@
 use std::{net::Shutdown, sync::Arc};
 
 use async_io::Timer;
-use async_std::{channel::Receiver, sync::Mutex, task};
+use async_std::{channel::Receiver, sync::RwLock, task};
 use futures::{pin_mut, StreamExt};
 
 use crate::{
@@ -33,7 +33,7 @@ async fn run_command_loop(app_ctx: PGenAppContext, mut app_receiver: Receiver<Ap
         interface: GeneratorInterface::Resolve,
         buf: vec![0; 512],
     };
-    let generator_client = Arc::new(Mutex::new(generator_client));
+    let generator_client = Arc::new(RwLock::new(generator_client));
 
     let stream = TcpGeneratorClient::get_stream(generator_client.clone()).fuse();
     pin_mut!(stream);
@@ -60,7 +60,7 @@ async fn run_command_loop(app_ctx: PGenAppContext, mut app_receiver: Receiver<Ap
                     AppCommandTx::StopInterface(interface) => {
                         log::trace!("Stopping interface {interface:?}");
 
-                        let mut client = generator_client.lock().await;
+                        let mut client = generator_client.write().await;
                         if let Some(reader) = client.stream.take() {
                             let stream = reader.into_inner();
                             stream.shutdown(Shutdown::Read).unwrap();
@@ -89,19 +89,33 @@ async fn run_command_loop(app_ctx: PGenAppContext, mut app_receiver: Receiver<Ap
 
             msg = stream.select_next_some() => {
                 let interface = {
-                    let client = generator_client.lock().await;
+                    let client = generator_client.read().await;
                     client.interface
                 };
 
+                let controller = app_ctx.controller.clone();
                 match interface {
-                    GeneratorInterface::Resolve => handle_resolve_pattern_message(app_ctx.controller.clone(), &msg),
+                    GeneratorInterface::Resolve => handle_resolve_pattern_message(controller, &msg),
                 };
+
+                // Update controller in case UI is in background (no repaints)
+                if let Ok(ref mut controller) = app_ctx.controller.write() {
+                    while let Ok(AppCommandRx::Pgen(res)) = app_ctx.res_receiver.try_recv() {
+                        controller.handle_pgen_response(res);
+                    }
+                }
             }
 
             _ = heartbeat_stream.select_next_some() => {
                 if let Ok(ref mut controller) = app_ctx.controller.read() {
                     if controller.state.connected_state.connected {
                         controller.pgen_command(PGenCommand::IsAlive);
+                    }
+
+                    // Update generator status
+                    let client = generator_client.read().await;
+                    if client.stream.is_none() {
+                        app_ctx.res_sender.try_send(AppCommandRx::GeneratorListening(false)).ok();
                     }
                 }
             }
