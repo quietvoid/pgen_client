@@ -151,10 +151,9 @@ impl TcpGeneratorClient {
     }
 
     fn send_generator_stopped(&self) {
+        let client = GeneratorInterface::Tcp(self.interface).client();
         self.generator_tx
-            .try_send(GeneratorCmd::StopInterface(GeneratorInterface::Tcp(
-                self.interface,
-            )))
+            .try_send(GeneratorCmd::StopClient(client))
             .ok();
     }
 }

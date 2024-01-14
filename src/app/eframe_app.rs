@@ -45,7 +45,7 @@ impl eframe::App for PGenApp {
                 state: self.state.clone(),
                 editing_socket: self.editing_socket.clone(),
                 generator_state: GeneratorState {
-                    interface: self.generator_state.interface,
+                    client: self.generator_state.client,
                     listening: false,
                 },
             },

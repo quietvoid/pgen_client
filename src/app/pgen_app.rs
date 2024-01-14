@@ -4,7 +4,7 @@ use eframe::egui::{self, Layout, Sense};
 use eframe::epaint::{Color32, Stroke, Vec2};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::generators::{GeneratorCmd, GeneratorInterface, GeneratorState, TcpGeneratorInterface};
+use crate::generators::{GeneratorClient, GeneratorCmd, GeneratorState};
 use crate::pgen::commands::PGenCommand;
 use crate::pgen::controller::{PGenControllerCmd, PGenControllerState};
 use crate::pgen::pattern_config::{TestPatternPosition, TestPatternSize};
@@ -45,8 +45,8 @@ impl PGenApp {
             state,
             editing_socket: (socket_addr.ip().to_string(), socket_addr.port().to_string()),
             generator_state: GeneratorState {
+                client: GeneratorClient::Resolve,
                 listening: false,
-                interface: GeneratorInterface::Tcp(TcpGeneratorInterface::Resolve),
             },
             processing: false,
             requested_close: false,
@@ -437,19 +437,34 @@ impl PGenApp {
         }
     }
 
-    fn add_generator_config(&self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    fn add_generator_config(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         ui.with_layout(Layout::left_to_right(egui::Align::Min), |ui| {
+            ui.label("Generator client");
+            ui.add_enabled_ui(!self.generator_state.listening, |ui| {
+                egui::ComboBox::from_id_source(egui::Id::new("generator_client"))
+                    .selected_text(self.generator_state.client.to_str())
+                    .show_ui(ui, |ui| {
+                        for client in GeneratorClient::list().iter().copied() {
+                            ui.selectable_value(
+                                &mut self.generator_state.client,
+                                client,
+                                client.to_str(),
+                            );
+                        }
+                    });
+            });
+
             let generator_label = if self.generator_state.listening {
-                "Stop generator interface"
+                "Stop generator client"
             } else {
-                "Start generator interface"
+                "Start generator client"
             };
 
             if ui.button(generator_label).clicked() {
                 let cmd = if self.generator_state.listening {
-                    GeneratorCmd::StopInterface(self.generator_state.interface)
+                    GeneratorCmd::StopClient(self.generator_state.client)
                 } else {
-                    GeneratorCmd::StartInterface(self.generator_state.interface)
+                    GeneratorCmd::StartClient(self.generator_state.client)
                 };
 
                 self.ctx.generator_tx.try_send(cmd).ok();
