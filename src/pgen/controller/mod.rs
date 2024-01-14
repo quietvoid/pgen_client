@@ -56,11 +56,11 @@ pub enum PGenControllerCmd {
     UpdateSocket(SocketAddr),
     InitialConnect,
     Disconnect,
+    TestPattern(PGenPatternConfig),
     SendCurrentPattern,
     SetBlank,
     PGen(PGenCommand),
     SetGuiCallback(eframe::egui::Context),
-    Quit,
 }
 
 impl PGenControllerState {

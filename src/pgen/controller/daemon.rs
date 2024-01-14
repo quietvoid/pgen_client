@@ -38,6 +38,7 @@ async fn init_command_loop(
                     PGenControllerCmd::InitialConnect => controller.initial_connect().await,
                     PGenControllerCmd::UpdateSocket(socket_addr) => controller.update_socket(socket_addr).await,
                     PGenControllerCmd::Disconnect => controller.disconnect().await,
+                    PGenControllerCmd::TestPattern(config) => controller.send_pattern_from_cfg(config).await,
                     PGenControllerCmd::SendCurrentPattern => controller.send_current_pattern().await,
                     PGenControllerCmd::SetBlank => controller.set_blank().await,
                     PGenControllerCmd::PGen(cmd) => {
@@ -45,14 +46,11 @@ async fn init_command_loop(
                     },
                     PGenControllerCmd::SetGuiCallback(egui_ctx) => {
                         controller.ctx.egui_ctx.replace(egui_ctx);
-                    },
-                    PGenControllerCmd::Quit => {
-                        controller.disconnect().await;
-                        break;
                     }
                 }
 
                 controller.ctx.app_tx.as_ref().and_then(|app_tx| app_tx.try_send(PGenAppUpdate::DoneProcessing).ok());
+                controller.update_ui();
             }
             _ = heartbeat_stream.tick().fuse() => {
                 controller.send_heartbeat().await;

@@ -6,6 +6,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::app::PGenAppUpdate;
+use crate::pgen::pattern_config::PGenPatternConfig;
 use crate::pgen::{
     client::{PGenClient, PGenTestPattern},
     commands::{PGenCommand, PGenCommandResponse, PGenInfoCommand},
@@ -56,6 +57,15 @@ impl PGenController {
         }
     }
 
+    pub fn try_update_app_state(&self, state_updated: bool) {
+        if let Some(app_tx) = state_updated.then_some(self.ctx.app_tx.as_ref()).flatten() {
+            app_tx
+                .try_send(PGenAppUpdate::NewState(self.state.clone()))
+                .ok();
+            self.update_ui();
+        }
+    }
+
     pub fn handle_pgen_response(&mut self, res: PGenCommandResponse) {
         log::trace!("Received PGen command response: {:?}", res);
 
@@ -73,12 +83,7 @@ impl PGenController {
             PGenCommandResponse::MultipleCommandInfo(res) => self.parse_commands_info(res),
         }
 
-        if let Some(app_tx) = state_updated.then_some(self.ctx.app_tx.as_ref()).flatten() {
-            app_tx
-                .try_send(PGenAppUpdate::NewState(self.state.clone()))
-                .ok();
-            self.update_ui();
-        }
+        self.try_update_app_state(state_updated);
     }
 
     pub async fn pgen_command(&mut self, cmd: PGenCommand) {
@@ -157,12 +162,19 @@ impl PGenController {
             .unwrap_or_default()
     }
 
-    pub async fn send_pattern(&mut self, pattern: PGenTestPattern) {
+    pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig) {
         // Only send non repeated patterns
-        if self.state.pattern_config.patch_colour != pattern.rgb {
-            self.state.pattern_config.patch_colour = pattern.rgb;
-            self.state.pattern_config.background_colour = pattern.bg_rgb;
-            self.pgen_command(PGenCommand::TestPattern(pattern)).await;
+        if self.state.pattern_config.patch_colour != config.patch_colour {
+            // Update current pattern and send it
+            self.state.pattern_config = PGenPatternConfig {
+                bit_depth: config.bit_depth,
+                patch_colour: config.patch_colour,
+                background_colour: config.background_colour,
+                ..self.state.pattern_config
+            };
+            self.try_update_app_state(true);
+
+            self.send_current_pattern().await;
         }
     }
 

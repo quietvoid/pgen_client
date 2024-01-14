@@ -5,10 +5,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::{net::TcpStream, time::timeout};
 use yaserde::YaDeserialize;
 
-use crate::pgen::{
-    client::PGenTestPattern, commands::PGenCommand, controller::PGenControllerCmd,
-    pattern_config::PGenPatternConfig, ColorFormat,
-};
+use crate::pgen::{controller::PGenControllerCmd, pattern_config::PGenPatternConfig};
 
 const RESOLVE_INTERFACE_ADDRESS: &str = "127.0.0.1:20002";
 
@@ -52,9 +49,7 @@ pub async fn handle_resolve_pattern_message(controller_tx: &Sender<PGenControlle
         Ok(pattern) => {
             log::debug!("Resolve pattern received: {pattern:?}");
             let config = pattern.to_pgen();
-            let pgen_pattern = PGenTestPattern::from_config(ColorFormat::Rgb, &config);
-
-            let cmd = PGenControllerCmd::PGen(PGenCommand::TestPattern(pgen_pattern));
+            let cmd = PGenControllerCmd::TestPattern(config);
             controller_tx.try_send(cmd).ok();
         }
         Err(e) => log::error!("{e}"),

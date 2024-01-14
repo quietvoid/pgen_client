@@ -15,25 +15,29 @@ impl eframe::App for PGenApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             }
 
-            {
-                if ui.input(|i| i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)) {
-                    self.ctx
-                        .controller_tx
-                        .try_send(PGenControllerCmd::Disconnect)
-                        .ok();
-                    self.requested_close = true;
-                }
-                if self.requested_close && !self.allowed_to_close && !self.has_messages_queued() {
-                    log::info!("Nothing queued, closing app");
-                    self.allowed_to_close = true;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
+            if ui.input(|i| i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)) {
+                log::info!("Requested close, disconnecting");
+                self.requested_close = true;
 
-                self.set_top_bar(ctx);
-                self.set_central_panel(ctx);
+                // Force message to be sent
+                let controller_tx = self.ctx.controller_tx.clone();
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(async {
+                        controller_tx.send(PGenControllerCmd::Disconnect).await.ok();
+                    });
+                });
             }
 
+            self.set_top_bar(ctx);
+            self.set_central_panel(ctx);
+
             self.check_responses();
+
+            if self.requested_close && self.allowed_to_close {
+                self.requested_close = false;
+                log::info!("Cleared queue, closing app");
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         });
     }
 

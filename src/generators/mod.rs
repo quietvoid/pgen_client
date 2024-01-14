@@ -56,11 +56,10 @@ pub fn start_generator_worker(
                     cmd = rx.select_next_some() => {
                         match cmd {
                             GeneratorCmd::StartClient(client) => {
-                                let interface = client.interface();
+                                log::trace!("Generator: Starting client {client:?}");
                                 app_tx.try_send(PGenAppUpdate::Processing).ok();
-                                log::trace!("Generator: Starting interface {interface:?}");
 
-                                match interface {
+                                match client.interface() {
                                     GeneratorInterface::Tcp(tcp_interface) => {
                                         if let Ok(tx) = start_tcp_generator_client(controller_tx.clone(), tx.clone(), tcp_interface).await {
                                             client_tx.replace(tx);
@@ -73,11 +72,11 @@ pub fn start_generator_worker(
                                 }
                                 app_tx.try_send(PGenAppUpdate::DoneProcessing).ok();
                             },
-                            GeneratorCmd::StopClient(interface) => {
-                                log::trace!("Generator: Stopping interface {interface:?}");
+                            GeneratorCmd::StopClient(client) => {
+                                log::trace!("Generator: Stopping client {client:?}");
 
                                 if let Some(client_tx) = client_tx.take() {
-                                    client_tx.send(GeneratorClientCmd::Shutdown).await.ok();
+                                    client_tx.try_send(GeneratorClientCmd::Shutdown).ok();
                                 }
 
                                 app_tx.try_send(PGenAppUpdate::GeneratorListening(false)).ok();

@@ -2,6 +2,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use eframe::egui::{self, Layout, Sense};
 use eframe::epaint::{Color32, Stroke, Vec2};
+use tokio::runtime::Handle;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::generators::{GeneratorClient, GeneratorCmd, GeneratorState};
@@ -54,8 +55,27 @@ impl PGenApp {
         }
     }
 
-    pub fn has_messages_queued(&self) -> bool {
-        self.processing
+    pub fn block_until_closed(&mut self) {
+        self.requested_close = true;
+
+        let controller_tx = self.ctx.controller_tx.clone();
+        tokio::task::block_in_place(|| {
+            Handle::current().block_on(async {
+                controller_tx.send(PGenControllerCmd::Disconnect).await.ok();
+
+                while let Some(msg) = self.ctx.rx.recv().await {
+                    match msg {
+                        PGenAppUpdate::NewState(state) => self.state = state,
+                        PGenAppUpdate::Processing => self.processing = true,
+                        PGenAppUpdate::DoneProcessing => {
+                            self.processing = false;
+                            self.ctx.rx.close();
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        });
     }
 
     pub(crate) fn check_responses(&mut self) {
@@ -89,6 +109,11 @@ impl PGenApp {
                 PGenAppUpdate::Processing => self.processing = true,
                 PGenAppUpdate::DoneProcessing => self.processing = false,
             }
+        }
+
+        if self.requested_close && !self.processing {
+            self.allowed_to_close = true;
+            self.ctx.rx.close();
         }
     }
 
@@ -459,16 +484,6 @@ impl PGenApp {
             } else {
                 "Start generator client"
             };
-
-            if ui.button(generator_label).clicked() {
-                let cmd = if self.generator_state.listening {
-                    GeneratorCmd::StopClient(self.generator_state.client)
-                } else {
-                    GeneratorCmd::StartClient(self.generator_state.client)
-                };
-
-                self.ctx.generator_tx.try_send(cmd).ok();
-            }
             let status_color = if self.generator_state.listening {
                 if ctx.style().visuals.dark_mode {
                     Color32::DARK_GREEN
@@ -480,6 +495,17 @@ impl PGenApp {
             } else {
                 Color32::LIGHT_RED
             };
+            ui.add_enabled_ui(self.state.connected_state.connected, |ui| {
+                if ui.button(generator_label).clicked() {
+                    let cmd = if self.generator_state.listening {
+                        GeneratorCmd::StopClient(self.generator_state.client)
+                    } else {
+                        GeneratorCmd::StartClient(self.generator_state.client)
+                    };
+
+                    self.ctx.generator_tx.try_send(cmd).ok();
+                }
+            });
             let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
             painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
         });
