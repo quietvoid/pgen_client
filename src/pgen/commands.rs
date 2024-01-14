@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use super::client::{ConnectState, PGenTestPattern};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PGenCommand {
     IsAlive,
     Connect,
@@ -17,7 +17,7 @@ pub enum PGenCommand {
     MultipleCommandsInfo(Vec<PGenInfoCommand>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PGenCommandResponse {
     NotConnected,
     Busy,
@@ -31,7 +31,7 @@ pub enum PGenCommandResponse {
     MultipleCommandInfo(Vec<(PGenInfoCommand, String)>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PGenInfoCommand {
     GetResolution,
     GetOutputRange,
@@ -43,7 +43,7 @@ pub enum PGenInfoCommand {
 }
 
 impl PGenInfoCommand {
-    pub const fn to_str(&self) -> &str {
+    pub const fn as_str(&self) -> &str {
         match self {
             Self::GetResolution => "GET_RESOLUTION",
             Self::GetColorFormat => "GET_PGENERATOR_CONF_COLOR_FORMAT",
@@ -68,7 +68,7 @@ impl PGenInfoCommand {
     }
 
     pub fn split_command_result<'a>(&self, res: &'a str) -> Option<&'a str> {
-        let cmd_str = self.to_str();
+        let cmd_str = self.as_str();
         res.find(cmd_str).map(|i| {
             // Ignore :
             &res[i + cmd_str.len() + 1..]

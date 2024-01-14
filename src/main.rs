@@ -1,14 +1,14 @@
-use std::sync::{Arc, RwLock};
-
 use anyhow::{bail, Result};
-use app::{commands::PGenAppContext, PGenApp};
 use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use eframe::egui::{self, TextStyle};
-use pgen::controller::PGenController;
 
-mod app;
-mod pgen;
+use app::{PGenApp, PGenAppSavedState, PGenAppUpdate};
+use pgen::controller::handler::PGenController;
+
+pub mod app;
+pub mod generators;
+pub mod pgen;
 
 #[derive(Parser, Debug)]
 #[command(name = env!("CARGO_PKG_NAME"), about = "RPi PGenerator client", author = "quietvoid", version = env!("CARGO_PKG_VERSION"))]
@@ -17,31 +17,27 @@ struct Opt {
     verbose: Verbosity<InfoLevel>,
 }
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "multi_thread", worker_threads = 1)]
+async fn main() -> Result<()> {
     let opt = Opt::parse();
 
     pretty_env_logger::formatted_timed_builder()
         .filter_module("pgen_client", opt.verbose.log_level_filter())
         .init();
 
-    let (app_sender, app_receiver) = async_std::channel::bounded(5);
-    let (res_sender, res_receiver) = async_std::channel::bounded(5);
+    let (app_tx, app_rx) = tokio::sync::mpsc::channel(5);
+    let (controller_tx, controller_rx) = tokio::sync::mpsc::channel(5);
+    let generator_tx = generators::start_generator_worker(app_tx.clone(), controller_tx.clone());
 
-    let controller = PGenController::new(app_sender.clone());
-    let controller = Arc::new(RwLock::new(controller));
+    let controller = PGenController::new(Some(app_tx.clone()));
+    let app = PGenApp::new(app_rx, controller_tx, generator_tx);
 
-    let app_ctx = PGenAppContext {
-        app_sender,
-        res_sender,
-        res_receiver,
-        controller,
-    };
-    pgen::daemon::start_pgen_daemon_thread(app_ctx.clone(), app_receiver);
+    pgen::controller::daemon::start_pgen_controller_worker(controller, controller_rx);
 
     let res = eframe::run_native(
         "pgen_client",
         eframe::NativeOptions::default(),
-        Box::new(|cc| {
+        Box::new(move |cc| {
             // Set the global theme, default to dark mode
             let mut global_visuals = egui::style::Visuals::dark();
             global_visuals.window_shadow = egui::epaint::Shadow::small_light();
@@ -52,7 +48,18 @@ fn main() -> Result<()> {
             style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 16.0;
             cc.egui_ctx.set_style(style);
 
-            Box::new(PGenApp::new(cc, app_ctx))
+            let saved_state = cc.storage.and_then(|storage| {
+                eframe::get_value::<PGenAppSavedState>(storage, eframe::APP_KEY)
+            });
+
+            app_tx
+                .try_send(PGenAppUpdate::InitialSetup {
+                    egui_ctx: cc.egui_ctx.clone(),
+                    saved_state,
+                })
+                .ok();
+
+            Box::new(app)
         }),
     );
 
