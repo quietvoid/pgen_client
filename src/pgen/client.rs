@@ -1,16 +1,16 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use async_std::io;
-use async_std::net::TcpStream;
-use async_std::prelude::*;
-use async_std::task;
+use anyhow::Result;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio::time::timeout;
 
-use super::commands::PGenInfoCommand;
-use super::commands::{PGenCommand, PGenCommandResponse};
+use super::commands::{PGenCommand, PGenCommandResponse, PGenInfoCommand};
 use super::pattern_config::PGenPatternConfig;
+use super::utils::compute_rgb_range;
 use super::ColorFormat;
 
 const PGEN_CMD_END_BYTE_STR: &str = "\x02\x0D";
@@ -31,7 +31,7 @@ pub struct ConnectState {
     pub error: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PGenTestPattern {
     pub format: ColorFormat,
 
@@ -69,39 +69,47 @@ impl PGenClient {
         self.connect().await
     }
 
-    fn clean_response(bytes: &[u8]) -> &[u8] {
-        let end_bytes_idx = bytes.windows(2).position(|w| w == PGEN_CMD_END_BYTES);
-
-        if let Some(idx) = end_bytes_idx {
-            &bytes[..idx]
-        } else {
-            bytes
-        }
-    }
-
-    async fn send_tcp_command(&mut self, cmd: &str) -> io::Result<String> {
+    async fn send_tcp_command(&mut self, cmd: &str) -> Result<String> {
         if self.stream.is_none() {
             return Ok(String::from("Not connected to TCP socket"));
         }
 
-        log::debug!("Sending command {}", cmd);
+        log::trace!("Sending command {}", cmd);
 
         let stream = self.stream.as_mut().unwrap();
         stream
-            .write_fmt(format_args!("{cmd}{PGEN_CMD_END_BYTE_STR}"))
+            .write_all(format!("{cmd}{PGEN_CMD_END_BYTE_STR}").as_bytes())
             .await?;
 
-        io::timeout(Duration::from_secs(10), async {
-            let n = stream.read(&mut self.response_buffer).await?;
+        let res_bytes = timeout(Duration::from_secs(10), async {
+            let mut n = 0;
+            let mut correct_end_bytes = false;
 
-            let res_bytes = Self::clean_response(&self.response_buffer[..n]);
+            while let Ok(read_bytes) = stream.read(&mut self.response_buffer[n..]).await {
+                n += read_bytes;
+                if read_bytes == 0 {
+                    break;
+                } else {
+                    correct_end_bytes =
+                        matches!(&self.response_buffer[n - 2..n], PGEN_CMD_END_BYTES);
+                    if correct_end_bytes {
+                        break;
+                    }
+                }
+            }
 
-            let response = String::from_utf8_lossy(res_bytes).to_string();
-            log::trace!("  Response: {response}");
-
-            Ok(response)
+            if correct_end_bytes {
+                &self.response_buffer[..n - 2]
+            } else {
+                &self.response_buffer[..n]
+            }
         })
-        .await
+        .await?;
+
+        let response = String::from_utf8_lossy(res_bytes).to_string();
+        log::trace!("  Response: {response}");
+
+        Ok(response)
     }
 
     async fn send_heartbeat(&mut self) -> PGenCommandResponse {
@@ -116,20 +124,20 @@ impl PGenClient {
         PGenCommandResponse::Alive(is_alive)
     }
 
-    pub async fn set_stream(&mut self) -> Result<(), io::Error> {
+    pub async fn set_stream(&mut self) -> Result<()> {
         if self.stream.is_some() {
             self.disconnect().await;
         }
 
-        let stream = io::timeout(
+        let stream = timeout(
             Duration::from_secs(10),
             TcpStream::connect(self.socket_addr),
         )
-        .await?;
+        .await??;
         self.stream = Some(stream);
 
         let stream = self.stream.as_mut().unwrap();
-        log::debug!("Successfully connected to {}", &stream.peer_addr()?);
+        log::trace!("Successfully connected to {}", &stream.peer_addr()?);
 
         Ok(())
     }
@@ -137,50 +145,43 @@ impl PGenClient {
     async fn connect(&mut self) -> PGenCommandResponse {
         self.connect_state.connected = false;
         self.connect_state.error = None;
-        log::debug!("Connecting to {}", self.socket_addr);
+        log::trace!("Connecting to {}", self.socket_addr);
 
-        let res: Result<bool, io::Error> = task::block_on(async {
-            if !self.connect_state.connected {
-                self.set_stream().await?;
-            } else {
-                log::debug!("Already connected, requesting heartbeat");
-            }
-
-            let PGenCommandResponse::Alive(is_alive) = self.send_heartbeat().await else {
-                unreachable!()
-            };
-
-            Ok(is_alive)
-        });
-
-        match res {
-            Ok(res) => self.connect_state.connected = res,
-            Err(e) => self.connect_state.error = Some(e.to_string()),
+        let res = if !self.connect_state.connected {
+            self.set_stream().await
+        } else {
+            log::trace!("Already connected, requesting heartbeat");
+            Ok(())
         };
+
+        let PGenCommandResponse::Alive(is_alive) = self.send_heartbeat().await else {
+            unreachable!()
+        };
+
+        self.connect_state.connected = is_alive;
+        if let Err(e) = res {
+            self.connect_state.error = Some(e.to_string());
+        }
 
         PGenCommandResponse::Connect(self.connect_state.clone())
     }
 
     async fn disconnect(&mut self) -> PGenCommandResponse {
-        let res: Result<bool, io::Error> = task::block_on(async {
-            let connected = if self.connect_state.connected {
-                let res = self.send_tcp_command("QUIT").await?;
-
-                !res.is_empty()
-            } else {
-                log::debug!("Already disconnected");
-                false
-            };
-
-            Ok(connected)
-        });
+        let res = if self.connect_state.connected {
+            self.send_tcp_command("QUIT")
+                .await
+                .map(|res| !res.is_empty())
+        } else {
+            log::trace!("Already disconnected");
+            Ok(false)
+        };
 
         match res {
             Ok(still_connected) => {
                 self.connect_state.connected = still_connected;
 
                 if still_connected {
-                    log::debug!("Failed disconnecting connection");
+                    log::trace!("Failed disconnecting connection");
                 } else {
                     self.stream = None;
                 }
@@ -192,10 +193,10 @@ impl PGenClient {
     }
 
     async fn shutdown_device(&mut self) -> PGenCommandResponse {
-        let res: Result<bool, io::Error> = task::block_on(async {
-            let res = self.send_tcp_command("CMD:HALT").await?;
-            Ok(res == "OK:")
-        });
+        let res = self
+            .send_tcp_command("CMD:HALT")
+            .await
+            .map(|res| res == "OK:");
 
         match res {
             Ok(res) => {
@@ -211,10 +212,10 @@ impl PGenClient {
     }
 
     async fn reboot_device(&mut self) -> PGenCommandResponse {
-        let res: Result<bool, io::Error> = task::block_on(async {
-            let res = self.send_tcp_command("CMD:REBOOT").await?;
-            Ok(res == "OK:")
-        });
+        let res = self
+            .send_tcp_command("CMD:REBOOT")
+            .await
+            .map(|res| res == "OK:");
 
         match &res {
             Ok(res) => {
@@ -253,6 +254,7 @@ impl PGenClient {
 
         let cmd = format!("RGB={rect};{w},{h};0;{r},{g},{b};{bg_r},{bg_b},{bg_g};0,0,{x},{y};-1");
 
+        log::info!("Sent pattern RGB: [{r}, {g}, {b}], background: [{bg_r}, {bg_g}, {bg_b}]");
         PGenCommandResponse::Ok(self.send_tcp_command(&cmd).await.is_ok())
     }
 
@@ -260,7 +262,7 @@ impl PGenClient {
         &mut self,
         commands: Vec<PGenInfoCommand>,
     ) -> PGenCommandResponse {
-        let commands_str = commands.iter().map(|c| c.to_str()).join(":");
+        let commands_str = commands.iter().map(|c| c.as_str()).join(":");
         let cmd = format!("CMD:MULTIPLE:{commands_str}");
 
         let res = self.send_tcp_command(&cmd).await;
@@ -324,7 +326,7 @@ impl PGenTestPattern {
     }
 
     pub fn blank(format: ColorFormat, cfg: &PGenPatternConfig) -> Self {
-        let rgb_range = super::compute_rgb_range(cfg.limited_range, cfg.bit_depth);
+        let rgb_range = compute_rgb_range(cfg.limited_range, cfg.bit_depth);
         let rgb = [*rgb_range.start(); 3];
         let bg_rgb = rgb;
 

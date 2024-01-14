@@ -1,43 +1,61 @@
-use std::{io::BufReader, net::TcpStream};
+use std::io;
+use std::time::Duration;
 
+use tokio::sync::mpsc::Sender;
+use tokio::{net::TcpStream, time::timeout};
 use yaserde::YaDeserialize;
 
 use crate::pgen::{
-    client::PGenTestPattern, controller::PGenControllerHandle, pattern_config::PGenPatternConfig,
+    client::PGenTestPattern, commands::PGenCommand, controller::PGenControllerCmd,
+    pattern_config::PGenPatternConfig, ColorFormat,
 };
 
-use super::GeneratorClientHandle;
+const RESOLVE_INTERFACE_ADDRESS: &str = "127.0.0.1:20002";
 
-pub async fn resolve_connect_and_set_tcp_stream(generator_client: GeneratorClientHandle) -> bool {
-    let addr = "127.0.0.1:20002";
-    match TcpStream::connect(addr) {
-        Ok(stream) => {
-            {
-                let mut client = generator_client.write().await;
-                client.stream.replace(BufReader::new(stream));
-            }
-
-            log::trace!("Started Resolve TCP connection");
-            true
-        }
-        Err(e) => {
-            log::error!("{e:?}");
-            false
-        }
-    }
+pub async fn resolve_connect_tcp_stream() -> io::Result<TcpStream> {
+    timeout(Duration::from_secs(5), async {
+        TcpStream::connect(RESOLVE_INTERFACE_ADDRESS).await
+    })
+    .await?
 }
 
-pub fn handle_resolve_pattern_message(controller: PGenControllerHandle, msg: &str) {
+pub async fn handle_resolve_tcp_stream_message(tcp_stream: &mut TcpStream) -> io::Result<String> {
+    let mut header = [0; 4];
+    let n = tcp_stream.try_read(&mut header)?;
+    if n != 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Resolve: invalid header",
+        ));
+    }
+
+    let msg_len = u32::from_be_bytes(header) as usize;
+    let mut msg = vec![0_u8; msg_len];
+    let n = tcp_stream.try_read(msg.as_mut())?;
+    if n != msg_len {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Resolve: Failed reading packet",
+        ));
+    }
+
+    // Shouldn't fail
+    let msg = String::from_utf8(msg).unwrap();
+
+    Ok(msg)
+}
+
+pub async fn handle_resolve_pattern_message(controller_tx: &Sender<PGenControllerCmd>, msg: &str) {
     let pattern = yaserde::de::from_str::<ResolvePattern>(msg);
 
     match pattern {
         Ok(pattern) => {
-            if let Ok(mut controller) = controller.write() {
-                let config = pattern.to_pgen(controller.state.pattern_config);
-                let pgen_pattern =
-                    PGenTestPattern::from_config(controller.get_color_format(), &config);
-                controller.send_pattern(pgen_pattern);
-            }
+            log::debug!("Resolve pattern received: {pattern:?}");
+            let config = pattern.to_pgen();
+            let pgen_pattern = PGenTestPattern::from_config(ColorFormat::Rgb, &config);
+
+            let cmd = PGenControllerCmd::PGen(PGenCommand::TestPattern(pgen_pattern));
+            controller_tx.try_send(cmd).ok();
         }
         Err(e) => log::error!("{e}"),
     }
@@ -78,12 +96,12 @@ struct ResolveGeometry {
 }
 
 impl ResolvePattern {
-    pub fn to_pgen(&self, base: PGenPatternConfig) -> PGenPatternConfig {
+    pub fn to_pgen(&self) -> PGenPatternConfig {
         PGenPatternConfig {
             bit_depth: self.color.bits,
             patch_colour: self.color.to_array(),
             background_colour: self.background.to_array(),
-            ..base
+            ..Default::default()
         }
     }
 }
