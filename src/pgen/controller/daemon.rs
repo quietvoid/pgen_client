@@ -19,7 +19,7 @@ async fn init_command_loop(
     mut controller: PGenController,
     controller_rx: Receiver<PGenControllerCmd>,
 ) {
-    let reconnect_period = std::time::Duration::from_secs(900);
+    let reconnect_period = std::time::Duration::from_secs(30 * 60);
     let mut reconnect_stream = interval(reconnect_period);
 
     let heartbeat_period = std::time::Duration::from_secs(30);
@@ -33,6 +33,9 @@ async fn init_command_loop(
                 controller.ctx.app_tx.as_ref().and_then(|app_tx| app_tx.try_send(PGenAppUpdate::Processing).ok());
 
                 match cmd {
+                    PGenControllerCmd::SetGuiCallback(egui_ctx) => {
+                        controller.ctx.egui_ctx.replace(egui_ctx);
+                    }
                     PGenControllerCmd::SetInitialState(state) => controller.set_initial_state(state).await,
                     PGenControllerCmd::UpdateState(state) => controller.state = state,
                     PGenControllerCmd::InitialConnect => controller.initial_connect().await,
@@ -44,9 +47,13 @@ async fn init_command_loop(
                     PGenControllerCmd::PGen(cmd) => {
                         controller.pgen_command(cmd).await;
                     },
-                    PGenControllerCmd::SetGuiCallback(egui_ctx) => {
-                        controller.ctx.egui_ctx.replace(egui_ctx);
-                    }
+                    PGenControllerCmd::RestartSoftware => controller.restart_pgenerator_software(true).await,
+                    PGenControllerCmd::ChangeDisplayMode(mode) => controller.change_display_mode(mode, true).await,
+                    PGenControllerCmd::UpdateDynamicRange(dynamic_range) => controller.update_dynamic_range(dynamic_range).await,
+                    PGenControllerCmd::MultipleSetConfCommands(commands) => {
+                        // Restart must be done manually to apply changes
+                        controller.send_multiple_set_conf_commands(commands).await
+                    },
                 }
 
                 controller.ctx.app_tx.as_ref().and_then(|app_tx| app_tx.try_send(PGenAppUpdate::DoneProcessing).ok());

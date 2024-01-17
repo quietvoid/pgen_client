@@ -144,7 +144,7 @@ impl TcpGeneratorClient {
             }
             ErrorKind::WouldBlock => {}
             _ => {
-                log::trace!("{e:?}");
+                log::error!("{e:?}");
                 self.reconnect().await;
             }
         }

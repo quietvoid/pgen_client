@@ -5,6 +5,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::{net::TcpStream, time::timeout};
 use yaserde::YaDeserialize;
 
+use crate::pgen::BitDepth;
 use crate::pgen::{controller::PGenControllerCmd, pattern_config::PGenPatternConfig};
 
 const RESOLVE_INTERFACE_ADDRESS: &str = "127.0.0.1:20002";
@@ -93,7 +94,7 @@ struct ResolveGeometry {
 impl ResolvePattern {
     pub fn to_pgen(&self) -> PGenPatternConfig {
         PGenPatternConfig {
-            bit_depth: self.color.bits,
+            bit_depth: BitDepth::from_repr(self.color.bits as usize).unwrap(),
             patch_colour: self.color.to_array(),
             background_colour: self.background.to_array(),
             ..Default::default()

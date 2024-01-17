@@ -1,5 +1,7 @@
 use std::ops::RangeInclusive;
 
+use super::pattern_config::PGenPatternConfig;
+
 pub fn compute_rgb_range(limited_range: bool, depth: u8) -> RangeInclusive<u16> {
     let depth = depth as u32;
     let min_rgb_value = if limited_range {
@@ -73,5 +75,41 @@ pub fn rgb_10b_to_8b(depth: u8, rgb: [u16; 3]) -> [u8; 3] {
         rgb.map(|c| (c / 4) as u8)
     } else {
         rgb.map(|c| c as u8)
+    }
+}
+
+pub fn scale_pattern_config_rgb_values(
+    pattern_config: &mut PGenPatternConfig,
+    depth: u8,
+    prev_depth: u8,
+    limited_range: bool,
+    prev_limited_range: bool,
+) {
+    let diff = depth.abs_diff(prev_depth) as f32;
+    if depth == prev_depth && limited_range == prev_limited_range {
+        return;
+    }
+
+    if prev_depth == 8 {
+        // 8 bit to 10 bit
+        pattern_config
+            .patch_colour
+            .iter_mut()
+            .chain(pattern_config.background_colour.iter_mut())
+            .for_each(|c| {
+                *c = scale_8b_rgb_to_10b(*c, diff, depth, limited_range, prev_limited_range)
+            });
+    } else {
+        // 10 bit to 8 bit
+        pattern_config
+            .patch_colour
+            .iter_mut()
+            .chain(pattern_config.background_colour.iter_mut())
+            .for_each(|c| {
+                let mut val = *c as f32 / 2.0_f32.powf(diff);
+                val = scale_rgb_into_range(val, depth, limited_range, prev_limited_range);
+
+                *c = val.round() as u16;
+            });
     }
 }

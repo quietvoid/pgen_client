@@ -1,19 +1,21 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::app::PGenAppUpdate;
+use crate::pgen::commands::PGenSetConfCommand;
 use crate::pgen::pattern_config::PGenPatternConfig;
 use crate::pgen::{
     client::{PGenClient, PGenTestPattern},
-    commands::{PGenCommand, PGenCommandResponse, PGenInfoCommand},
+    commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand},
     ColorFormat, DynamicRange,
 };
+use crate::pgen::{BitDepth, Colorimetry, HdrEotf, Primaries, QuantRange};
 
-use super::{PGenControllerContext, PGenControllerState};
+use super::{DisplayMode, PGenControllerContext, PGenControllerState};
 
 pub type PGenControllerHandle = Arc<RwLock<PGenController>>;
 
@@ -21,14 +23,6 @@ pub type PGenControllerHandle = Arc<RwLock<PGenController>>;
 pub struct PGenController {
     pub ctx: PGenControllerContext,
     pub state: PGenControllerState,
-}
-
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct PGenOutputConfig {
-    pub resolution: (u16, u16),
-    pub format: ColorFormat,
-    pub limited_range: bool,
-    pub dynamic_range: DynamicRange,
 }
 
 impl PGenController {
@@ -67,9 +61,11 @@ impl PGenController {
     }
 
     pub fn handle_pgen_response(&mut self, res: PGenCommandResponse) {
-        log::trace!("Received PGen command response: {:?}", res);
-
-        let state_updated = !matches!(res, PGenCommandResponse::Busy | PGenCommandResponse::Ok(_));
+        let mut state_updated =
+            !matches!(res, PGenCommandResponse::Busy | PGenCommandResponse::Ok(_));
+        if let PGenCommandResponse::Alive(is_alive) = res {
+            state_updated = is_alive != self.state.connected_state.connected;
+        };
 
         match res {
             PGenCommandResponse::NotConnected => self.state.connected_state.connected = false,
@@ -80,7 +76,12 @@ impl PGenController {
             | PGenCommandResponse::Quit(state)
             | PGenCommandResponse::Shutdown(state)
             | PGenCommandResponse::Reboot(state) => self.state.connected_state = state,
-            PGenCommandResponse::MultipleCommandInfo(res) => self.parse_commands_info(res),
+            PGenCommandResponse::MultipleGetConfRes(res) => {
+                self.parse_multiple_get_conf_commands_res(res);
+            }
+            PGenCommandResponse::MultipleSetConfRes(res) => {
+                self.parse_multiple_set_conf_commands_res(&res);
+            }
         }
 
         self.try_update_app_state(state_updated);
@@ -110,19 +111,9 @@ impl PGenController {
         self.pgen_command(PGenCommand::IsAlive).await;
     }
 
-    pub async fn fetch_output_info(&mut self) {
-        self.pgen_command(PGenCommand::MultipleCommandsInfo(
-            PGenInfoCommand::output_info_commands(),
-        ))
-        .await;
-    }
-
     pub async fn initial_connect(&mut self) {
         self.pgen_command(PGenCommand::Connect).await;
-
-        if self.state.connected_state.connected {
-            self.fetch_output_info().await;
-        }
+        self.fetch_base_info().await;
     }
 
     pub async fn disconnect(&mut self) {
@@ -151,14 +142,97 @@ impl PGenController {
             };
         }
 
-        self.fetch_output_info().await;
+        self.fetch_base_info().await;
+    }
+
+    pub async fn fetch_base_info(&mut self) {
+        if self.state.connected_state.connected {
+            self.pgen_command(PGenCommand::MultipleGetConfCommands(
+                PGenGetConfCommand::base_info_commands(),
+            ))
+            .await;
+        }
+    }
+
+    pub async fn restart_pgenerator_software(&mut self, refetch: bool) {
+        self.pgen_command(PGenCommand::RestartSoftware).await;
+        self.set_blank().await;
+
+        if refetch {
+            self.fetch_base_info().await;
+        } else {
+            self.update_pgenerator_pid().await;
+        }
+    }
+
+    async fn update_pgenerator_pid(&mut self) {
+        self.pgen_command(PGenCommand::MultipleGetConfCommands(&[
+            PGenGetConfCommand::GetPGeneratorPid,
+        ]))
+        .await;
+    }
+
+    pub async fn change_display_mode(&mut self, mode: DisplayMode, get_pid: bool) {
+        self.pgen_command(PGenCommand::MultipleSetConfCommands(vec![
+            PGenSetConfCommand::SetDisplayMode(mode),
+        ]))
+        .await;
+
+        if get_pid {
+            // Setting display mode restarts the PGenerator, get new PID
+            self.update_pgenerator_pid().await;
+        }
+
+        self.set_blank().await;
+    }
+
+    async fn set_dolby_vision_mode(&mut self) {
+        // Try finding a 1080p@60 display mode
+        let valid_display_mode = self.state.pgen_info.as_ref().and_then(|info| {
+            info.display_modes
+                .iter()
+                .find(|mode| mode.resolution.0 == 1920 && mode.refresh_rate == 60.0)
+        });
+
+        if let Some(valid_mode) = valid_display_mode.copied() {
+            let needs_mode_switch = self
+                .state
+                .pgen_info
+                .as_ref()
+                .is_some_and(|info| info.current_display_mode != valid_mode);
+
+            if needs_mode_switch {
+                self.change_display_mode(valid_mode, false).await;
+            }
+
+            // Set Dolby Vision configs
+            let commands = PGenSetConfCommand::commands_for_dynamic_range(DynamicRange::Dovi);
+            self.pgen_command(PGenCommand::MultipleSetConfCommands(commands))
+                .await;
+
+            // Restart for changes to apply
+            self.restart_pgenerator_software(false).await;
+        } else {
+            log::error!("Cannot set Dolby Vision, no 1080p display mode found");
+        }
+    }
+
+    pub async fn update_dynamic_range(&mut self, dynamic_range: DynamicRange) {
+        if dynamic_range == DynamicRange::Dovi {
+            self.set_dolby_vision_mode().await;
+        } else {
+            let commands = PGenSetConfCommand::commands_for_dynamic_range(dynamic_range);
+            self.pgen_command(PGenCommand::MultipleSetConfCommands(commands))
+                .await;
+            self.restart_pgenerator_software(false).await;
+        }
     }
 
     pub fn get_color_format(&self) -> ColorFormat {
         self.state
-            .output_config
+            .pgen_info
             .as_ref()
-            .map(|e| e.format)
+            .map(|e| e.output_config.format)
             .unwrap_or_default()
     }
 
@@ -189,57 +263,227 @@ impl PGenController {
         self.pgen_command(PGenCommand::TestPattern(pattern)).await;
     }
 
-    pub fn parse_commands_info(&mut self, res: Vec<(PGenInfoCommand, String)>) {
-        {
-            let out_cfg = self
-                .state
-                .output_config
-                .get_or_insert_with(Default::default);
+    pub fn parse_multiple_get_conf_commands_res(&mut self, res: Vec<(PGenGetConfCommand, String)>) {
+        let pgen_info = self.state.pgen_info.get_or_insert_with(Default::default);
+        let out_cfg = &mut pgen_info.output_config;
+        let mut changed_mode = false;
 
-            for (cmd, res) in res {
-                match cmd {
-                    PGenInfoCommand::GetResolution => {
-                        if let Some(resolution) = PGenInfoCommand::parse_get_resolution(res) {
-                            out_cfg.resolution = resolution;
-                        }
+        for (cmd, res) in res {
+            match cmd {
+                PGenGetConfCommand::GetPGeneratorVersion => {
+                    pgen_info.version = cmd.parse_string_config(res.as_str()).to_owned();
+                }
+                PGenGetConfCommand::GetPGeneratorPid => {
+                    pgen_info.pid = cmd.parse_string_config(res.as_str()).to_owned();
+                }
+                PGenGetConfCommand::GetCurrentMode => {
+                    if let Ok(mode) =
+                        DisplayMode::try_from_str(cmd.parse_string_config(res.as_str()))
+                    {
+                        pgen_info.current_display_mode = mode;
+                        changed_mode = true;
                     }
-                    PGenInfoCommand::GetColorFormat => {
-                        if let Some(format) = cmd.parse_number_config::<u8>(res) {
-                            out_cfg.format = ColorFormat::from(format);
-                        }
+                }
+                PGenGetConfCommand::GetModesAvailable => {
+                    let decoded_str = STANDARD
+                        .decode(cmd.parse_string_config(res.as_str()))
+                        .ok()
+                        .and_then(|e| String::from_utf8(e).ok());
+                    if let Some(modes_str) = decoded_str {
+                        pgen_info.display_modes = modes_str
+                            .lines()
+                            .map(DisplayMode::try_from_str)
+                            .filter_map(Result::ok)
+                            .collect();
                     }
-                    PGenInfoCommand::GetOutputRange => {
-                        if let Some(limited_range) = PGenInfoCommand::parse_get_output_range(res) {
-                            out_cfg.limited_range = limited_range;
-                            self.state.pattern_config.limited_range = limited_range;
-                        }
+                }
+                PGenGetConfCommand::GetColorFormat => {
+                    if let Some(format) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(ColorFormat::from_repr)
+                    {
+                        out_cfg.format = format;
                     }
-                    PGenInfoCommand::GetOutputIsSDR => {
-                        if cmd.parse_bool_config(res) {
-                            out_cfg.dynamic_range = DynamicRange::Sdr;
-                        }
+                }
+                PGenGetConfCommand::GetBitDepth => {
+                    if let Some(bit_depth) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(BitDepth::from_repr)
+                    {
+                        out_cfg.bit_depth = bit_depth;
                     }
-                    PGenInfoCommand::GetOutputIsHDR => {
-                        if cmd.parse_bool_config(res) {
-                            out_cfg.dynamic_range = DynamicRange::Hdr10;
-                        }
+                }
+                PGenGetConfCommand::GetQuantRange => {
+                    if let Some(quant_range) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(QuantRange::from_repr)
+                    {
+                        out_cfg.quant_range = quant_range;
+                        self.state.pattern_config.limited_range =
+                            quant_range == QuantRange::Limited;
                     }
-                    PGenInfoCommand::GetOutputIsLLDV => {
-                        if cmd.parse_bool_config(res) {
-                            out_cfg.dynamic_range = DynamicRange::LlDv;
-                        }
+                }
+                PGenGetConfCommand::GetColorimetry => {
+                    if let Some(colorimetry) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(Colorimetry::from_repr)
+                    {
+                        out_cfg.colorimetry = colorimetry;
                     }
-                    PGenInfoCommand::GetOutputIsStdDovi => {
-                        if cmd.parse_bool_config(res) {
-                            out_cfg.dynamic_range = DynamicRange::StdDovi;
-                        }
+                }
+                PGenGetConfCommand::GetOutputRange => {
+                    if let Some(limited_range) = PGenGetConfCommand::parse_get_output_range(res) {
+                        out_cfg.quant_range = QuantRange::from(limited_range);
+                    }
+                }
+                PGenGetConfCommand::GetOutputIsSDR => {
+                    if cmd.parse_bool_config(res) {
+                        out_cfg.dynamic_range = DynamicRange::Sdr;
+                    }
+                }
+                PGenGetConfCommand::GetOutputIsHDR => {
+                    if cmd.parse_bool_config(res) {
+                        out_cfg.dynamic_range = DynamicRange::Hdr10;
+                    }
+                }
+                PGenGetConfCommand::GetOutputIsLLDV => {
+                    if cmd.parse_bool_config(res) {
+                        out_cfg.dynamic_range = DynamicRange::Dovi;
+                    }
+                }
+                PGenGetConfCommand::GetOutputIsStdDovi => {
+                    if cmd.parse_bool_config(res) {
+                        out_cfg.dynamic_range = DynamicRange::Dovi;
+                    }
+                }
+                PGenGetConfCommand::GetHdrEotf => {
+                    if let Some(eotf) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(HdrEotf::from_repr)
+                    {
+                        out_cfg.hdr_meta.eotf = eotf;
+                    }
+                }
+                PGenGetConfCommand::GetHdrPrimaries => {
+                    if let Some(primaries) = cmd
+                        .parse_number_config::<usize>(res)
+                        .and_then(Primaries::from_repr)
+                    {
+                        out_cfg.hdr_meta.primaries = primaries;
+                    }
+                }
+                PGenGetConfCommand::GetHdrMaxMdl => {
+                    if let Some(max_mdl) = cmd.parse_number_config::<u16>(res) {
+                        out_cfg.hdr_meta.max_mdl = max_mdl;
+                    }
+                }
+                PGenGetConfCommand::GetHdrMinMdl => {
+                    if let Some(min_mdl) = cmd.parse_number_config::<u16>(res) {
+                        out_cfg.hdr_meta.min_mdl = min_mdl;
+                    }
+                }
+                PGenGetConfCommand::GetHdrMaxCLL => {
+                    if let Some(maxcll) = cmd.parse_number_config::<u16>(res) {
+                        out_cfg.hdr_meta.maxcll = maxcll;
+                    }
+                }
+                PGenGetConfCommand::GetHdrMaxFALL => {
+                    if let Some(maxfall) = cmd.parse_number_config::<u16>(res) {
+                        out_cfg.hdr_meta.maxfall = maxfall;
                     }
                 }
             }
-
-            log::debug!("Output config: {:?}", out_cfg);
         }
 
-        self.state.set_pattern_size_and_pos_from_resolution();
+        log::trace!("PGenerator info: {:?}", self.state.pgen_info);
+
+        if changed_mode {
+            self.state.set_pattern_size_and_pos_from_resolution();
+        }
+    }
+
+    pub async fn send_multiple_set_conf_commands<'a>(&mut self, commands: Vec<PGenSetConfCommand>) {
+        self.pgen_command(PGenCommand::MultipleSetConfCommands(commands))
+            .await;
+    }
+
+    pub fn parse_multiple_set_conf_commands_res(&mut self, res: &[(PGenSetConfCommand, bool)]) {
+        let mut changed_mode = false;
+
+        if let Some(pgen_info) = self.state.pgen_info.as_mut() {
+            let successful_sets = res.iter().filter_map(|(cmd, ok)| ok.then_some(*cmd));
+
+            for cmd in successful_sets {
+                match cmd {
+                    PGenSetConfCommand::SetDisplayMode(mode) => {
+                        pgen_info.current_display_mode = mode;
+                        changed_mode = true;
+                    }
+                    PGenSetConfCommand::SetColorFormat(format) => {
+                        pgen_info.output_config.format = format;
+                    }
+                    PGenSetConfCommand::SetBitDepth(bit_depth) => {
+                        pgen_info.output_config.bit_depth = bit_depth;
+                    }
+                    PGenSetConfCommand::SetQuantRange(quant_range) => {
+                        pgen_info.output_config.quant_range = quant_range;
+                        self.state.pattern_config.limited_range =
+                            quant_range == QuantRange::Limited;
+                    }
+                    PGenSetConfCommand::SetColorimetry(colorimetry) => {
+                        pgen_info.output_config.colorimetry = colorimetry;
+                    }
+                    PGenSetConfCommand::SetOutputIsSDR(is_sdr) => {
+                        if is_sdr {
+                            pgen_info.output_config.dynamic_range = DynamicRange::Sdr;
+                        }
+                    }
+                    PGenSetConfCommand::SetOutputIsHDR(is_hdr) => {
+                        if is_hdr {
+                            pgen_info.output_config.dynamic_range = DynamicRange::Hdr10;
+                        }
+                    }
+                    PGenSetConfCommand::SetOutputIsLLDV(is_lldv) => {
+                        if is_lldv {
+                            pgen_info.output_config.dynamic_range = DynamicRange::Dovi;
+                        }
+                    }
+                    PGenSetConfCommand::SetOutputIsStdDovi(is_std_dovi) => {
+                        if is_std_dovi {
+                            pgen_info.output_config.dynamic_range = DynamicRange::Dovi;
+                        }
+                    }
+                    PGenSetConfCommand::SetDoviStatus(_)
+                    | PGenSetConfCommand::SetDoviInterface(_) => {
+                        // TODO: Store?
+                    }
+                    PGenSetConfCommand::SetDoviMapMode(dovi_map_mode) => {
+                        pgen_info.output_config.dovi_map_mode = dovi_map_mode;
+                    }
+                    PGenSetConfCommand::SetHdrEotf(eotf) => {
+                        pgen_info.output_config.hdr_meta.eotf = eotf;
+                    }
+                    PGenSetConfCommand::SetHdrPrimaries(primaries) => {
+                        pgen_info.output_config.hdr_meta.primaries = primaries;
+                    }
+                    PGenSetConfCommand::SetHdrMaxMdl(max_mdl) => {
+                        pgen_info.output_config.hdr_meta.max_mdl = max_mdl;
+                    }
+                    PGenSetConfCommand::SetHdrMinMdl(min_mdl) => {
+                        pgen_info.output_config.hdr_meta.min_mdl = min_mdl;
+                    }
+                    PGenSetConfCommand::SetHdrMaxCLL(maxcll) => {
+                        pgen_info.output_config.hdr_meta.maxcll = maxcll;
+                    }
+                    PGenSetConfCommand::SetHdrMaxFALL(maxfall) => {
+                        pgen_info.output_config.hdr_meta.maxfall = maxfall;
+                    }
+                }
+            }
+        }
+
+        if changed_mode {
+            self.state.set_pattern_size_and_pos_from_resolution();
+        }
     }
 }

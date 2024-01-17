@@ -1,6 +1,6 @@
 use eframe::egui::{self, Key};
 
-use crate::{generators::GeneratorState, pgen::controller::PGenControllerCmd};
+use crate::generators::GeneratorState;
 
 use super::{PGenApp, PGenAppSavedState};
 
@@ -16,16 +16,7 @@ impl eframe::App for PGenApp {
             }
 
             if ui.input(|i| i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)) {
-                log::info!("Requested close, disconnecting");
-                self.requested_close = true;
-
-                // Force message to be sent
-                let controller_tx = self.ctx.controller_tx.clone();
-                tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async {
-                        controller_tx.send(PGenControllerCmd::Disconnect).await.ok();
-                    });
-                });
+                self.close();
             }
 
             self.set_top_bar(ctx);

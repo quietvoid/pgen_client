@@ -2,15 +2,18 @@ use std::net::{IpAddr, SocketAddr};
 
 use eframe::egui::{self, Layout, Sense};
 use eframe::epaint::{Color32, Stroke, Vec2};
-use tokio::runtime::Handle;
+use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::generators::{GeneratorClient, GeneratorCmd, GeneratorState};
-use crate::pgen::commands::PGenCommand;
-use crate::pgen::controller::{PGenControllerCmd, PGenControllerState};
+use crate::pgen::commands::{PGenCommand, PGenSetConfCommand};
+use crate::pgen::controller::{PGenControllerCmd, PGenControllerState, PGenInfo, PGenOutputConfig};
 use crate::pgen::pattern_config::{TestPatternPosition, TestPatternSize};
 use crate::pgen::utils::{
-    compute_rgb_range, rgb_10b_to_8b, scale_8b_rgb_to_10b, scale_rgb_into_range,
+    compute_rgb_range, rgb_10b_to_8b, scale_8b_rgb_to_10b, scale_pattern_config_rgb_values,
+};
+use crate::pgen::{
+    BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
 };
 
 pub use super::{PGenAppContext, PGenAppSavedState, PGenAppUpdate};
@@ -55,25 +58,15 @@ impl PGenApp {
         }
     }
 
-    pub fn block_until_closed(&mut self) {
+    pub fn close(&mut self) {
+        log::info!("Requested close, disconnecting");
         self.requested_close = true;
 
+        // Force message to be sent
         let controller_tx = self.ctx.controller_tx.clone();
         tokio::task::block_in_place(|| {
-            Handle::current().block_on(async {
+            tokio::runtime::Handle::current().block_on(async {
                 controller_tx.send(PGenControllerCmd::Disconnect).await.ok();
-
-                while let Some(msg) = self.ctx.rx.recv().await {
-                    match msg {
-                        PGenAppUpdate::NewState(state) => self.state = state,
-                        PGenAppUpdate::Processing => self.processing = true,
-                        PGenAppUpdate::DoneProcessing => {
-                            self.processing = false;
-                            self.ctx.rx.close();
-                        }
-                        _ => {}
-                    }
-                }
             });
         });
     }
@@ -95,7 +88,7 @@ impl PGenApp {
                         .ok();
 
                     if let Some(saved_state) = saved_state {
-                        self.state = saved_state.state;
+                        self.update_from_new_state(saved_state.state);
                         self.editing_socket = saved_state.editing_socket;
                         self.generator_state = saved_state.generator_state;
 
@@ -105,7 +98,7 @@ impl PGenApp {
                             .ok();
                     }
                 }
-                PGenAppUpdate::NewState(state) => self.state = state,
+                PGenAppUpdate::NewState(state) => self.update_from_new_state(state),
                 PGenAppUpdate::Processing => self.processing = true,
                 PGenAppUpdate::DoneProcessing => self.processing = false,
             }
@@ -118,53 +111,83 @@ impl PGenApp {
     }
 
     pub(crate) fn set_top_bar(&mut self, ctx: &egui::Context) {
-        let connected = self.state.connected_state.connected;
-
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+            ui.horizontal_wrapped(|ui| {
                 egui::widgets::global_dark_light_mode_switch(ui);
                 if self.processing {
                     ui.add(egui::Spinner::new().size(26.0));
                 }
+                ui.separator();
+
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("Exit").clicked() {
+                            self.close();
+                        }
+                    });
+                })
             });
+        });
+    }
 
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                ui.label("IP Address");
-                let ip_res = ui.add(
-                    egui::TextEdit::singleline(&mut self.editing_socket.0).desired_width(255.0),
-                );
+    pub(crate) fn set_central_panel(&mut self, ctx: &egui::Context) {
+        let can_edit_configs = !self.processing && !self.generator_state.listening;
 
-                ui.label("Port");
-                let port_res = ui.add(
-                    egui::TextEdit::singleline(&mut self.editing_socket.1).desired_width(50.0),
-                );
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.add_default_config(ctx, ui);
+            ui.separator();
 
-                if ip_res.lost_focus() || port_res.lost_focus() {
-                    let parsed_ip = self.editing_socket.0.parse::<IpAddr>();
-                    let parsed_port = self.editing_socket.1.parse::<u16>();
+            ui.add_enabled_ui(can_edit_configs, |ui| {
+                self.add_output_info(ui);
+                self.add_pattern_config_grid(ui);
+            });
+            ui.separator();
 
-                    if let (Ok(new_ip), Ok(new_port)) = (&parsed_ip, &parsed_port) {
-                        let new_socket: SocketAddr = SocketAddr::new(*new_ip, *new_port);
-                        if self.state.socket_addr != new_socket {
-                            self.state.socket_addr = new_socket;
+            ui.add_enabled_ui(!self.processing, |ui| {
+                self.add_generator_config(ctx, ui);
+            });
+        });
+    }
 
-                            self.ctx
-                                .controller_tx
-                                .try_send(PGenControllerCmd::UpdateSocket(self.state.socket_addr))
-                                .ok();
-                        }
-                    } else {
-                        // Clear invalid back to current socket
-                        if parsed_ip.is_err() {
-                            self.editing_socket.0 = self.state.socket_addr.ip().to_string();
-                        }
-                        if parsed_port.is_err() {
-                            self.editing_socket.1 = self.state.socket_addr.port().to_string();
-                        }
+    fn add_default_config(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let connected = self.state.connected_state.connected;
+
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+            ui.label("IP Address");
+            let ip_res =
+                ui.add(egui::TextEdit::singleline(&mut self.editing_socket.0).desired_width(255.0));
+
+            ui.label("Port");
+            let port_res =
+                ui.add(egui::TextEdit::singleline(&mut self.editing_socket.1).desired_width(50.0));
+
+            if ip_res.lost_focus() || port_res.lost_focus() {
+                let parsed_ip = self.editing_socket.0.parse::<IpAddr>();
+                let parsed_port = self.editing_socket.1.parse::<u16>();
+
+                if let (Ok(new_ip), Ok(new_port)) = (&parsed_ip, &parsed_port) {
+                    let new_socket: SocketAddr = SocketAddr::new(*new_ip, *new_port);
+                    if self.state.socket_addr != new_socket {
+                        self.state.socket_addr = new_socket;
+
+                        self.ctx
+                            .controller_tx
+                            .try_send(PGenControllerCmd::UpdateSocket(self.state.socket_addr))
+                            .ok();
+                    }
+                } else {
+                    // Clear invalid back to current socket
+                    if parsed_ip.is_err() {
+                        self.editing_socket.0 = self.state.socket_addr.ip().to_string();
+                    }
+                    if parsed_port.is_err() {
+                        self.editing_socket.1 = self.state.socket_addr.port().to_string();
                     }
                 }
-            });
+            }
+        });
 
+        ui.add_enabled_ui(!self.processing, |ui| {
             egui::Grid::new("prefs_grid")
                 .spacing([8.0, 4.0])
                 .show(ui, |ui| {
@@ -194,54 +217,47 @@ impl PGenApp {
                     let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
                     painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
 
-                    ui.add_enabled_ui(!self.processing, |ui| {
-                        if ui.button("Connect").clicked() {
-                            self.ctx
-                                .controller_tx
-                                .try_send(PGenControllerCmd::InitialConnect)
-                                .ok();
-                        }
+                    if ui.button("Connect").clicked() {
+                        self.ctx
+                            .controller_tx
+                            .try_send(PGenControllerCmd::InitialConnect)
+                            .ok();
+                    }
 
-                        if connected && ui.button("Disconnect").clicked() {
+                    if connected {
+                        if ui.button("Disconnect").clicked() {
                             self.ctx
                                 .controller_tx
                                 .try_send(PGenControllerCmd::Disconnect)
                                 .ok();
                         }
 
-                        if connected && ui.button("Shutdown device").clicked() {
+                        if ui.button("Shutdown device").clicked() {
                             self.ctx
                                 .controller_tx
                                 .try_send(PGenControllerCmd::PGen(PGenCommand::Shutdown))
                                 .ok();
                         }
 
-                        if connected && ui.button("Reboot device").clicked() {
+                        if ui.button("Reboot device").clicked() {
                             self.ctx
                                 .controller_tx
                                 .try_send(PGenControllerCmd::PGen(PGenCommand::Reboot))
                                 .ok();
                         }
-                    });
-                    ui.end_row();
+                    }
                 });
-        });
-    }
 
-    pub(crate) fn set_central_panel(&mut self, ctx: &egui::Context) {
-        let can_edit_pattern_config = !self.processing && !self.generator_state.listening;
+            if let Some(info) = connected.then_some(self.state.pgen_info.as_ref()).flatten() {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("Version: {}, {}", info.version, info.pid));
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.add_output_info(ui);
-
-            ui.add_enabled_ui(can_edit_pattern_config, |ui| {
-                self.add_pattern_config_grid(ui);
-            });
-            ui.separator();
-
-            ui.add_enabled_ui(!self.processing, |ui| {
-                self.add_generator_config(ctx, ui);
-            });
+                    if ui.button("Restart PGenerator software").clicked() {
+                        restart_pgenerator_sw(&self.ctx);
+                    }
+                });
+            }
         });
     }
 
@@ -250,40 +266,361 @@ impl PGenApp {
             .state
             .connected_state
             .connected
-            .then_some(self.state.output_config.as_ref())
+            .then_some(self.state.pgen_info.as_mut())
             .flatten();
 
-        if let Some(output_cfg) = output_config {
-            egui::Grid::new("output_conf_grid").show(ui, |ui| {
-                let (res_w, res_h) = output_cfg.resolution;
-                let dynamic_range_str = output_cfg.dynamic_range.to_str();
-                let pixel_range = if output_cfg.limited_range {
-                    "Limited"
-                } else {
-                    "Full"
-                };
+        if let Some(pgen_info) = output_config {
+            ui.horizontal(|ui| {
+                Self::add_base_output_config(&self.ctx, pgen_info, ui);
 
-                ui.label(format!("Resolution: {res_w}x{res_h}"));
-                ui.end_row();
-
-                ui.label(format!(
-                    "Format {} ({pixel_range})",
-                    output_cfg.format.to_str()
-                ));
-                ui.end_row();
-
-                ui.label(format!("Dynamic Range: {dynamic_range_str}"));
-                ui.end_row();
+                let output_cfg = &mut pgen_info.output_config;
+                ui.add_enabled_ui(output_cfg.dynamic_range != DynamicRange::Dovi, |ui| {
+                    Self::add_hdr_output_config(&self.ctx, output_cfg, ui);
+                });
             });
 
             ui.separator();
         }
     }
 
+    fn add_base_output_config(ctx: &PGenAppContext, pgen_info: &mut PGenInfo, ui: &mut egui::Ui) {
+        let output_cfg = &mut pgen_info.output_config;
+        let is_dovi = output_cfg.dynamic_range == DynamicRange::Dovi;
+
+        ui.vertical(|ui| {
+            ui.heading("Output config / AVI infoframe");
+            ui.indent("pgen_output_config", |ui| {
+                egui::Grid::new("output_config_grid")
+                    .spacing([16.0, 4.0])
+                    .show(ui, |ui| {
+                        let old_display_mode = pgen_info.current_display_mode;
+                        ui.label("Display mode");
+                        ui.add_enabled_ui(!is_dovi, |ui| {
+                            egui::ComboBox::from_id_source(egui::Id::new("out_display_mode"))
+                                .width(200.0)
+                                .selected_text(pgen_info.current_display_mode.to_string())
+                                .show_ui(ui, |ui| {
+                                    for mode in pgen_info.display_modes.iter().copied() {
+                                        ui.selectable_value(
+                                            &mut pgen_info.current_display_mode,
+                                            mode,
+                                            mode.to_string(),
+                                        );
+                                    }
+                                });
+                        });
+                        ui.end_row();
+                        if pgen_info.current_display_mode != old_display_mode {
+                            log::debug!("Change mode to {}", pgen_info.current_display_mode);
+                            ctx.controller_tx
+                                .try_send(PGenControllerCmd::ChangeDisplayMode(
+                                    pgen_info.current_display_mode,
+                                ))
+                                .ok();
+                        }
+
+                        let old_format = output_cfg.format;
+                        ui.label("Color format");
+                        ui.add_enabled_ui(!is_dovi, |ui| {
+                            egui::ComboBox::from_id_source(egui::Id::new("out_color_format"))
+                                .width(125.0)
+                                .selected_text(output_cfg.format.as_ref())
+                                .show_ui(ui, |ui| {
+                                    for format in ColorFormat::iter() {
+                                        ui.selectable_value(
+                                            &mut output_cfg.format,
+                                            format,
+                                            format.as_ref(),
+                                        );
+                                    }
+                                });
+                        });
+                        ui.end_row();
+                        if output_cfg.format != old_format {
+                            update_output_color_format(ctx, output_cfg.format);
+                        }
+
+                        let old_quant_range = output_cfg.quant_range;
+                        ui.label("Quant range");
+                        ui.add_enabled_ui(
+                            output_cfg.format == ColorFormat::Rgb && !is_dovi,
+                            |ui| {
+                                egui::ComboBox::from_id_source(egui::Id::new("out_quant_range"))
+                                    .width(125.0)
+                                    .selected_text(output_cfg.quant_range.as_ref())
+                                    .show_ui(ui, |ui| {
+                                        for quant_range in QuantRange::iter() {
+                                            ui.selectable_value(
+                                                &mut output_cfg.quant_range,
+                                                quant_range,
+                                                quant_range.as_ref(),
+                                            );
+                                        }
+                                    });
+                            },
+                        );
+                        ui.end_row();
+                        if output_cfg.quant_range != old_quant_range {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetQuantRange(output_cfg.quant_range),
+                            );
+                        }
+
+                        let old_bit_depth = output_cfg.bit_depth;
+                        ui.label("Bit depth");
+                        ui.add_enabled_ui(!is_dovi, |ui| {
+                            egui::ComboBox::from_id_source(egui::Id::new("out_max_bpc"))
+                                .width(125.0)
+                                .selected_text(output_cfg.bit_depth.as_ref())
+                                .show_ui(ui, |ui| {
+                                    for depth in BitDepth::iter() {
+                                        ui.selectable_value(
+                                            &mut output_cfg.bit_depth,
+                                            depth,
+                                            depth.as_ref(),
+                                        );
+                                    }
+                                });
+                        });
+                        ui.end_row();
+                        if output_cfg.bit_depth != old_bit_depth {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetBitDepth(output_cfg.bit_depth),
+                            );
+                        }
+
+                        let old_colorimetry = output_cfg.colorimetry;
+                        ui.label("Colorimetry");
+                        ui.add_enabled_ui(!is_dovi, |ui| {
+                            egui::ComboBox::from_id_source(egui::Id::new("out_colorimetry"))
+                                .width(125.0)
+                                .selected_text(output_cfg.colorimetry.as_ref())
+                                .show_ui(ui, |ui| {
+                                    for colorimetry in Colorimetry::iter() {
+                                        ui.selectable_value(
+                                            &mut output_cfg.colorimetry,
+                                            colorimetry,
+                                            colorimetry.as_ref(),
+                                        );
+                                    }
+                                });
+                        });
+                        ui.end_row();
+                        if output_cfg.colorimetry != old_colorimetry {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetColorimetry(output_cfg.colorimetry),
+                            );
+                        }
+
+                        let old_dynamic_range = output_cfg.dynamic_range;
+                        ui.label("Dynamic range");
+                        egui::ComboBox::from_id_source(egui::Id::new("out_dynamic_range"))
+                            .width(125.0)
+                            .selected_text(output_cfg.dynamic_range.as_ref())
+                            .show_ui(ui, |ui| {
+                                for dynamic_range in DynamicRange::iter() {
+                                    ui.selectable_value(
+                                        &mut output_cfg.dynamic_range,
+                                        dynamic_range,
+                                        dynamic_range.as_ref(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                        if output_cfg.dynamic_range != old_dynamic_range {
+                            ctx.controller_tx
+                                .try_send(PGenControllerCmd::UpdateDynamicRange(
+                                    output_cfg.dynamic_range,
+                                ))
+                                .ok();
+                        }
+
+                        if is_dovi {
+                            let old_dovi_map_mode = output_cfg.dovi_map_mode;
+                            ui.label("DoVi mode");
+                            egui::ComboBox::from_id_source(egui::Id::new("out_dovi_map_mode"))
+                                .width(125.0)
+                                .selected_text(output_cfg.dovi_map_mode.as_ref())
+                                .show_ui(ui, |ui| {
+                                    for dovi_map_mode in DoviMapMode::iter() {
+                                        ui.selectable_value(
+                                            &mut output_cfg.dovi_map_mode,
+                                            dovi_map_mode,
+                                            dovi_map_mode.as_ref(),
+                                        );
+                                    }
+                                });
+                            ui.end_row();
+                            if output_cfg.dovi_map_mode != old_dovi_map_mode {
+                                send_pgen_set_conf_command(
+                                    ctx,
+                                    PGenSetConfCommand::SetDoviMapMode(output_cfg.dovi_map_mode),
+                                );
+                            }
+                        }
+
+                        ui.vertical(|ui| {
+                            ui.add_space(20.0);
+                        });
+                        ui.end_row();
+
+                        ui.label("");
+                        ui.vertical_centered_justified(|ui| {
+                            let set_btn = egui::Button::new("Set AVI infoframe")
+                                .min_size((150.0, 20.0).into());
+                            if ui.add(set_btn).clicked() {
+                                restart_pgenerator_sw(ctx);
+                            }
+                        });
+                        ui.end_row();
+                    });
+            });
+        });
+    }
+
+    fn add_hdr_output_config(
+        ctx: &PGenAppContext,
+        output_cfg: &mut PGenOutputConfig,
+        ui: &mut egui::Ui,
+    ) {
+        ui.vertical(|ui| {
+            let hdr = &mut output_cfg.hdr_meta;
+            ui.heading("HDR metadata / DRM infoframe");
+            ui.indent("hdr_metadata_config", |ui| {
+                egui::Grid::new("output_config_grid")
+                    .spacing([16.0, 4.0])
+                    .show(ui, |ui| {
+                        let old_eotf = hdr.eotf;
+                        ui.label("EOTF");
+                        egui::ComboBox::from_id_source(egui::Id::new("hdr_eotf"))
+                            .width(200.0)
+                            .selected_text(hdr.eotf.as_ref())
+                            .show_ui(ui, |ui| {
+                                for eotf in HdrEotf::iter() {
+                                    ui.selectable_value(&mut hdr.eotf, eotf, eotf.as_ref());
+                                }
+                            });
+                        ui.end_row();
+                        if hdr.eotf != old_eotf {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrEotf(hdr.eotf),
+                            );
+                        }
+
+                        let old_primaries = hdr.primaries;
+                        ui.label("Primaries");
+                        egui::ComboBox::from_id_source(egui::Id::new("hdr_primaries"))
+                            .width(200.0)
+                            .selected_text(hdr.primaries.as_ref())
+                            .show_ui(ui, |ui| {
+                                for primaries in Primaries::iter() {
+                                    ui.selectable_value(
+                                        &mut hdr.primaries,
+                                        primaries,
+                                        primaries.as_ref(),
+                                    );
+                                }
+                            });
+                        ui.end_row();
+                        if hdr.primaries != old_primaries {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrPrimaries(hdr.primaries),
+                            );
+                        }
+
+                        ui.label("Max MDL");
+                        let max_mdl_res = ui.add(
+                            egui::DragValue::new(&mut hdr.max_mdl)
+                                .update_while_editing(false)
+                                .suffix(" nits")
+                                .max_decimals(0)
+                                .clamp_range(0..=10_000),
+                        );
+                        ui.end_row();
+                        if is_dragvalue_finished(max_mdl_res) {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrMaxMdl(hdr.max_mdl),
+                            );
+                        }
+
+                        let mut min_mdl = hdr.min_mdl as f64 / 10_000.0;
+                        ui.label("Min MDL");
+                        let min_mdl_res = ui.add(
+                            egui::DragValue::new(&mut min_mdl)
+                                .update_while_editing(false)
+                                .suffix(" nits")
+                                .max_decimals(5)
+                                .speed(0.0001)
+                                .clamp_range(0.0001..=0.0050),
+                        );
+                        hdr.min_mdl = (min_mdl * 10_000.0).round() as u16;
+                        ui.end_row();
+                        if is_dragvalue_finished(min_mdl_res) {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrMinMdl(hdr.min_mdl),
+                            );
+                        }
+
+                        ui.label("MaxCLL");
+                        let maxcll_res = ui.add(
+                            egui::DragValue::new(&mut hdr.maxcll)
+                                .update_while_editing(false)
+                                .suffix(" nits")
+                                .max_decimals(0)
+                                .clamp_range(0..=10_000),
+                        );
+                        ui.end_row();
+                        if is_dragvalue_finished(maxcll_res) {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrMaxCLL(hdr.maxcll),
+                            );
+                        }
+
+                        ui.label("MaxFALL");
+                        let maxfall_res = ui.add(
+                            egui::DragValue::new(&mut hdr.maxfall)
+                                .update_while_editing(false)
+                                .suffix(" nits")
+                                .max_decimals(0)
+                                .clamp_range(0..=10_000),
+                        );
+                        ui.end_row();
+                        if is_dragvalue_finished(maxfall_res) {
+                            send_pgen_set_conf_command(
+                                ctx,
+                                PGenSetConfCommand::SetHdrMaxFALL(hdr.maxfall),
+                            );
+                        }
+
+                        ui.vertical(|ui| {
+                            ui.add_space(20.0);
+                        });
+                        ui.end_row();
+
+                        ui.label("");
+                        ui.vertical_centered_justified(|ui| {
+                            if ui.button("Set DRM infoframe").clicked() {
+                                restart_pgenerator_sw(ctx);
+                            }
+                        });
+                        ui.end_row();
+                    });
+            });
+        });
+    }
+
     fn add_pattern_config_grid(&mut self, ui: &mut egui::Ui) {
         let connected = self.state.connected_state.connected;
         let old_limited_range = self.state.pattern_config.limited_range;
-        let old_depth = self.state.pattern_config.bit_depth;
+        let old_depth = self.state.pattern_config.bit_depth as u8;
         let old_preset_size = self.state.pattern_config.preset_size;
         let old_preset_position = self.state.pattern_config.preset_position;
         let rgb_range = compute_rgb_range(old_limited_range, old_depth);
@@ -313,13 +650,18 @@ impl PGenApp {
                 ));
                 ui.end_row();
 
-                ui.label("Bit depth");
-                egui::ComboBox::from_id_source(egui::Id::new("depth_select"))
-                    .width(50.0)
-                    .selected_text(self.state.pattern_config.bit_depth.to_string())
+                ui.label("Patch precision");
+                egui::ComboBox::from_id_source(egui::Id::new("patch_depth_select"))
+                    .width(75.0)
+                    .selected_text(self.state.pattern_config.bit_depth.as_ref())
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.state.pattern_config.bit_depth, 8, "8");
-                        ui.selectable_value(&mut self.state.pattern_config.bit_depth, 10, "10");
+                        for depth in BitDepth::iter() {
+                            ui.selectable_value(
+                                &mut self.state.pattern_config.bit_depth,
+                                depth,
+                                depth.as_ref(),
+                            );
+                        }
                     });
 
                 ui.end_row();
@@ -330,15 +672,15 @@ impl PGenApp {
 
                 ui.label("Patch size");
                 egui::ComboBox::from_id_source(egui::Id::new("preset_size_select"))
-                    .selected_text(self.state.pattern_config.preset_size.to_str())
+                    .selected_text(self.state.pattern_config.preset_size.as_ref())
                     .show_ui(ui, |ui| {
                         ui.set_min_width(115.0);
 
-                        for preset_size in TestPatternSize::list().iter().copied() {
+                        for preset_size in TestPatternSize::iter() {
                             ui.selectable_value(
                                 &mut self.state.pattern_config.preset_size,
                                 preset_size,
-                                preset_size.to_str(),
+                                preset_size.as_ref(),
                             );
                         }
                     });
@@ -347,10 +689,12 @@ impl PGenApp {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.patch_size.0)
+                                .update_while_editing(false)
                                 .clamp_range(0..=size_info.0),
                         );
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.patch_size.1)
+                                .update_while_editing(false)
                                 .clamp_range(0..=size_info.1),
                         );
                     });
@@ -359,14 +703,14 @@ impl PGenApp {
 
                 ui.label("Position");
                 egui::ComboBox::from_id_source(egui::Id::new("preset_position_select"))
-                    .selected_text(self.state.pattern_config.preset_position.to_str())
+                    .selected_text(self.state.pattern_config.preset_position.as_ref())
                     .show_ui(ui, |ui| {
                         ui.set_min_width(115.0);
-                        for preset_pos in TestPatternPosition::list().iter().copied() {
+                        for preset_pos in TestPatternPosition::iter() {
                             ui.selectable_value(
                                 &mut self.state.pattern_config.preset_position,
                                 preset_pos,
-                                preset_pos.to_str(),
+                                preset_pos.as_ref(),
                             );
                         }
                     });
@@ -375,10 +719,12 @@ impl PGenApp {
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.position.0)
+                                .update_while_editing(false)
                                 .clamp_range(0..=size_info.2),
                         );
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.position.1)
+                                .update_while_editing(false)
                                 .clamp_range(0..=size_info.3),
                         );
                     });
@@ -391,7 +737,11 @@ impl PGenApp {
                 });
                 ui.horizontal(|ui| {
                     rgb_dragv.iter_mut().for_each(|c| {
-                        ui.add(egui::DragValue::new(c).clamp_range(rgb_range.clone()));
+                        ui.add(
+                            egui::DragValue::new(c)
+                                .update_while_editing(false)
+                                .clamp_range(rgb_range.clone()),
+                        );
                     });
                 });
                 ui.end_row();
@@ -402,7 +752,11 @@ impl PGenApp {
                 });
                 ui.horizontal(|ui| {
                     bg_rgb_dragv.iter_mut().for_each(|c| {
-                        ui.add(egui::DragValue::new(c).clamp_range(rgb_range.clone()));
+                        ui.add(
+                            egui::DragValue::new(c)
+                                .update_while_editing(false)
+                                .clamp_range(rgb_range.clone()),
+                        );
                     });
                 });
                 ui.end_row();
@@ -425,10 +779,16 @@ impl PGenApp {
                 ui.end_row();
             });
 
-        if old_limited_range != self.state.pattern_config.limited_range
-            || old_depth != self.state.pattern_config.bit_depth
-        {
-            self.scale_rgb_values(old_depth, old_limited_range);
+        let new_depth = self.state.pattern_config.bit_depth as u8;
+        let new_limited_range = self.state.pattern_config.limited_range;
+        if old_depth != new_depth || old_limited_range != new_limited_range {
+            scale_pattern_config_rgb_values(
+                &mut self.state.pattern_config,
+                new_depth,
+                old_depth,
+                new_limited_range,
+                old_limited_range,
+            );
             state_updated |= true;
         }
         if old_preset_size != self.state.pattern_config.preset_size
@@ -438,11 +798,15 @@ impl PGenApp {
             state_updated |= true;
         }
         if old_rgb != rgb {
-            self.set_config_colour_from_srgb(self.state.pattern_config.bit_depth, rgb, false);
+            self.set_config_colour_from_srgb(self.state.pattern_config.bit_depth as u8, rgb, false);
             state_updated |= true;
         }
         if old_bg_rgb != bg_rgb {
-            self.set_config_colour_from_srgb(self.state.pattern_config.bit_depth, bg_rgb, true);
+            self.set_config_colour_from_srgb(
+                self.state.pattern_config.bit_depth as u8,
+                bg_rgb,
+                true,
+            );
             state_updated |= true;
         }
         if old_rgb_dragv != rgb_dragv {
@@ -455,10 +819,7 @@ impl PGenApp {
         }
 
         if state_updated {
-            self.ctx
-                .controller_tx
-                .try_send(PGenControllerCmd::UpdateState(self.state.clone()))
-                .ok();
+            self.update_controller_state();
         }
     }
 
@@ -467,13 +828,13 @@ impl PGenApp {
             ui.label("Generator client");
             ui.add_enabled_ui(!self.generator_state.listening, |ui| {
                 egui::ComboBox::from_id_source(egui::Id::new("generator_client"))
-                    .selected_text(self.generator_state.client.to_str())
+                    .selected_text(self.generator_state.client.as_ref())
                     .show_ui(ui, |ui| {
-                        for client in GeneratorClient::list().iter().copied() {
+                        for client in GeneratorClient::iter() {
                             ui.selectable_value(
                                 &mut self.generator_state.client,
                                 client,
-                                client.to_str(),
+                                client.as_ref(),
                             );
                         }
                     });
@@ -505,9 +866,10 @@ impl PGenApp {
 
                     self.ctx.generator_tx.try_send(cmd).ok();
                 }
+
+                let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
+                painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
             });
-            let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
-            painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
         });
     }
 
@@ -529,45 +891,75 @@ impl PGenApp {
         }
     }
 
-    pub fn scale_rgb_values(&mut self, prev_depth: u8, prev_limited_range: bool) {
-        let depth = self.state.pattern_config.bit_depth;
-        let diff = depth.abs_diff(prev_depth) as f32;
+    fn update_controller_state(&self) {
+        self.ctx
+            .controller_tx
+            .try_send(PGenControllerCmd::UpdateState(self.state.clone()))
+            .ok();
+    }
 
-        let limited_range = self.state.pattern_config.limited_range;
+    fn update_from_new_state(&mut self, state: PGenControllerState) {
+        let prev_depth = self.state.pattern_config.bit_depth;
+        let prev_quant_range = QuantRange::from(self.state.pattern_config.limited_range);
 
-        if prev_depth == 8 {
-            // 8 bit to 10 bit
-            self.state
-                .pattern_config
-                .patch_colour
-                .iter_mut()
-                .chain(self.state.pattern_config.background_colour.iter_mut())
-                .for_each(|c| {
-                    *c = scale_8b_rgb_to_10b(*c, diff, depth, limited_range, prev_limited_range)
-                });
-        } else {
-            // 10 bit to 8 bit
-            self.state
-                .pattern_config
-                .patch_colour
-                .iter_mut()
-                .chain(self.state.pattern_config.background_colour.iter_mut())
-                .for_each(|c| {
-                    let mut val = *c as f32 / 2.0_f32.powf(diff);
-                    val = scale_rgb_into_range(val, depth, limited_range, prev_limited_range);
+        self.state = state;
 
-                    *c = val.round() as u16;
-                });
+        // Adjust pattern config for output config
+        if let Some(out_cfg) = self.state.pgen_info.as_ref().map(|e| &e.output_config) {
+            if out_cfg.quant_range != prev_quant_range {
+                scale_pattern_config_rgb_values(
+                    &mut self.state.pattern_config,
+                    out_cfg.bit_depth as u8,
+                    prev_depth as u8,
+                    out_cfg.quant_range == QuantRange::Limited,
+                    prev_quant_range == QuantRange::Limited,
+                );
+
+                self.update_controller_state();
+            }
         }
     }
 
     pub fn compute_max_pattern_size_and_position(&self) -> Option<(u16, u16, u16, u16)> {
-        self.state.output_config.as_ref().map(|out_cfg| {
-            let (max_w, max_h) = out_cfg.resolution;
+        self.state.pgen_info.as_ref().map(|info| {
+            let (max_w, max_h) = info.current_display_mode.resolution;
             let (width, height) = self.state.pattern_config.patch_size;
             let (max_pos_x, max_pos_y) = (max_w - width, max_h - height);
 
             (max_w, max_h, max_pos_x, max_pos_y)
         })
     }
+}
+
+fn is_dragvalue_finished(res: egui::Response) -> bool {
+    !res.has_focus() && (res.drag_released() || res.lost_focus())
+}
+
+fn restart_pgenerator_sw(ctx: &PGenAppContext) {
+    ctx.controller_tx
+        .try_send(PGenControllerCmd::RestartSoftware)
+        .ok();
+}
+
+fn send_pgen_set_conf_command(ctx: &PGenAppContext, command: PGenSetConfCommand) {
+    let commands = vec![command];
+    ctx.controller_tx
+        .try_send(PGenControllerCmd::MultipleSetConfCommands(commands))
+        .ok();
+}
+
+fn update_output_color_format(ctx: &PGenAppContext, format: ColorFormat) {
+    let quant_range = match format {
+        ColorFormat::Rgb => QuantRange::Full,
+        ColorFormat::YCbCr444 | ColorFormat::YCbCr422 => QuantRange::Limited,
+    };
+
+    let commands = vec![
+        PGenSetConfCommand::SetColorFormat(format),
+        PGenSetConfCommand::SetQuantRange(quant_range),
+    ];
+
+    ctx.controller_tx
+        .try_send(PGenControllerCmd::MultipleSetConfCommands(commands))
+        .ok();
 }
