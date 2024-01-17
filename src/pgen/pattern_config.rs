@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumIter};
+
+use super::BitDepth;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct PGenPatternConfig {
     pub limited_range: bool,
-    pub bit_depth: u8,
+    pub bit_depth: BitDepth,
     pub patch_colour: [u16; 3],
     pub background_colour: [u16; 3],
 
@@ -13,26 +16,42 @@ pub struct PGenPatternConfig {
     pub preset_size: TestPatternSize,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Display, AsRefStr, Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, EnumIter,
+)]
 pub enum TestPatternPosition {
     #[default]
     Center,
+    #[strum(to_string = "Top left")]
     TopLeft,
+    #[strum(to_string = "Top right")]
     TopRight,
+    #[strum(to_string = "Bottom left")]
     BottomLeft,
+    #[strum(to_string = "Bottom right")]
     BottomRight,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(
+    Display, AsRefStr, Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, EnumIter,
+)]
 pub enum TestPatternSize {
+    #[strum(to_string = "1% window")]
     Percent1,
+    #[strum(to_string = "2% window")]
     Percent2,
+    #[strum(to_string = "5% window")]
     Percent5,
     #[default]
+    #[strum(to_string = "10% window")]
     Percent10,
+    #[strum(to_string = "25% window")]
     Percent25,
+    #[strum(to_string = "50% window")]
     Percent50,
+    #[strum(to_string = "75% window")]
     Percent75,
+    #[strum(to_string = "100% window")]
     Percent100,
 }
 
@@ -42,7 +61,7 @@ impl Default for PGenPatternConfig {
             limited_range: false,
             position: (0, 0),
             patch_size: (0, 0),
-            bit_depth: 10,
+            bit_depth: BitDepth::Ten,
             patch_colour: [128, 128, 128],
             background_colour: [0, 0, 0],
             preset_position: Default::default(),
@@ -52,26 +71,6 @@ impl Default for PGenPatternConfig {
 }
 
 impl TestPatternPosition {
-    pub const fn to_str(self) -> &'static str {
-        match self {
-            Self::Center => "Center",
-            Self::TopLeft => "Top left",
-            Self::TopRight => "Top right",
-            Self::BottomLeft => "Bottom left",
-            Self::BottomRight => "Bottom right",
-        }
-    }
-
-    pub const fn list() -> &'static [Self] {
-        &[
-            Self::Center,
-            Self::TopLeft,
-            Self::TopRight,
-            Self::BottomLeft,
-            Self::BottomRight,
-        ]
-    }
-
     pub fn compute_position(&self, width: u16, height: u16, patch_size: (u16, u16)) -> (u16, u16) {
         match self {
             Self::Center => {
@@ -89,32 +88,6 @@ impl TestPatternPosition {
 }
 
 impl TestPatternSize {
-    pub const fn to_str(self) -> &'static str {
-        match self {
-            Self::Percent1 => "1% window",
-            Self::Percent2 => "2% window",
-            Self::Percent5 => "5% window",
-            Self::Percent10 => "10% window",
-            Self::Percent25 => "25% window",
-            Self::Percent50 => "50% window",
-            Self::Percent75 => "75% window",
-            Self::Percent100 => "100% window",
-        }
-    }
-
-    pub const fn list() -> &'static [Self] {
-        &[
-            Self::Percent1,
-            Self::Percent2,
-            Self::Percent5,
-            Self::Percent10,
-            Self::Percent25,
-            Self::Percent50,
-            Self::Percent75,
-            Self::Percent100,
-        ]
-    }
-
     pub const fn float(&self) -> f32 {
         match self {
             Self::Percent1 => 0.01,

@@ -1,5 +1,6 @@
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumIter};
 use tokio::sync::mpsc::Sender;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -29,7 +30,9 @@ pub enum GeneratorCmd {
     StopClient(GeneratorClient),
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Display, AsRefStr, Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, EnumIter,
+)]
 pub enum GeneratorClient {
     Resolve,
 }
@@ -96,16 +99,6 @@ impl GeneratorClient {
         match self {
             Self::Resolve => GeneratorInterface::Tcp(TcpGeneratorInterface::Resolve),
         }
-    }
-
-    pub const fn to_str(&self) -> &'static str {
-        match self {
-            Self::Resolve => "Resolve",
-        }
-    }
-
-    pub const fn list() -> &'static [Self] {
-        &[Self::Resolve]
     }
 }
 

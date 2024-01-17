@@ -3,12 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use super::commands::{PGenCommand, PGenCommandResponse, PGenInfoCommand};
+use super::commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand, PGenSetConfCommand};
 use super::pattern_config::PGenPatternConfig;
 use super::utils::compute_rgb_range;
 use super::ColorFormat;
@@ -25,7 +24,7 @@ pub struct PGenClient {
     pub connect_state: ConnectState,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone)]
 pub struct ConnectState {
     pub connected: bool,
     pub error: Option<String>,
@@ -50,7 +49,7 @@ impl PGenClient {
         Self {
             stream: None,
             socket_addr,
-            response_buffer: vec![0; 2048],
+            response_buffer: vec![0; 8192],
             connect_state: Default::default(),
         }
     }
@@ -74,7 +73,7 @@ impl PGenClient {
             return Ok(String::from("Not connected to TCP socket"));
         }
 
-        log::trace!("Sending command {}", cmd);
+        log::debug!("Sending command {}", cmd);
 
         let stream = self.stream.as_mut().unwrap();
         stream
@@ -137,7 +136,7 @@ impl PGenClient {
         self.stream = Some(stream);
 
         let stream = self.stream.as_mut().unwrap();
-        log::trace!("Successfully connected to {}", &stream.peer_addr()?);
+        log::info!("Successfully connected to {}", &stream.peer_addr()?);
 
         Ok(())
     }
@@ -145,7 +144,7 @@ impl PGenClient {
     async fn connect(&mut self) -> PGenCommandResponse {
         self.connect_state.connected = false;
         self.connect_state.error = None;
-        log::trace!("Connecting to {}", self.socket_addr);
+        log::info!("Connecting to {}", self.socket_addr);
 
         let res = if !self.connect_state.connected {
             self.set_stream().await
@@ -181,7 +180,7 @@ impl PGenClient {
                 self.connect_state.connected = still_connected;
 
                 if still_connected {
-                    log::trace!("Failed disconnecting connection");
+                    log::error!("Failed disconnecting connection");
                 } else {
                     self.stream = None;
                 }
@@ -230,6 +229,10 @@ impl PGenClient {
         PGenCommandResponse::Reboot(self.connect_state.clone())
     }
 
+    async fn restart_software(&mut self) -> PGenCommandResponse {
+        PGenCommandResponse::Ok(self.send_tcp_command("RESTARTPGENERATOR:").await.is_ok())
+    }
+
     async fn send_test_pattern(&mut self, test_pattern: &PGenTestPattern) -> PGenCommandResponse {
         let rect = if test_pattern.bit_depth == 8 {
             "RECTANGLE"
@@ -258,11 +261,11 @@ impl PGenClient {
         PGenCommandResponse::Ok(self.send_tcp_command(&cmd).await.is_ok())
     }
 
-    pub async fn get_multiple_commands_info(
+    pub async fn send_multiple_get_conf_commands(
         &mut self,
-        commands: Vec<PGenInfoCommand>,
+        commands: &[PGenGetConfCommand],
     ) -> PGenCommandResponse {
-        let commands_str = commands.iter().map(|c| c.as_str()).join(":");
+        let commands_str = commands.iter().map(|c| c.as_ref()).join(":");
         let cmd = format!("CMD:MULTIPLE:{commands_str}");
 
         let res = self.send_tcp_command(&cmd).await;
@@ -272,10 +275,10 @@ impl PGenClient {
                 // Skip `OK:\n`
                 let command_results = res.split_terminator('\n').skip(1);
                 let paired_results = command_results
-                    .zip(commands)
+                    .zip(commands.iter().copied())
                     .map(|(res, c)| (c, res.to_owned()))
                     .collect();
-                PGenCommandResponse::MultipleCommandInfo(paired_results)
+                PGenCommandResponse::MultipleGetConfRes(paired_results)
             }
             Err(e) => {
                 let err_str = e.to_string();
@@ -283,6 +286,31 @@ impl PGenClient {
                 PGenCommandResponse::Errored(err_str)
             }
         }
+    }
+
+    pub async fn send_multiple_set_conf_commands(
+        &mut self,
+        commands: &[PGenSetConfCommand],
+    ) -> PGenCommandResponse {
+        let mut ret = Vec::with_capacity(commands.len());
+
+        for cmd in commands.iter().copied() {
+            let cmd_str = format!("CMD:{}:{}", cmd.as_ref(), cmd.value());
+            let res = self
+                .send_tcp_command(&cmd_str)
+                .await
+                .map(|res| res == "OK:");
+            match res {
+                Ok(res) => ret.push((cmd, res)),
+                Err(e) => {
+                    let err_str = e.to_string();
+                    self.connect_state.error = Some(err_str.clone());
+                    return PGenCommandResponse::Errored(err_str);
+                }
+            }
+        }
+
+        PGenCommandResponse::MultipleSetConfRes(ret)
     }
 
     pub async fn send_generic_command(&mut self, cmd: PGenCommand) -> PGenCommandResponse {
@@ -302,13 +330,17 @@ impl PGenClient {
             PGenCommand::Quit => self.disconnect().await,
             PGenCommand::Shutdown => self.shutdown_device().await,
             PGenCommand::Reboot => self.reboot_device().await,
+            PGenCommand::RestartSoftware => self.restart_software().await,
             PGenCommand::UpdateSocket(socket_addr) => {
                 self.update_socket_address_and_connect(&socket_addr).await
             }
-            PGenCommand::MultipleCommandsInfo(commands) => {
-                self.get_multiple_commands_info(commands).await
-            }
             PGenCommand::TestPattern(pattern) => self.send_test_pattern(&pattern).await,
+            PGenCommand::MultipleGetConfCommands(commands) => {
+                self.send_multiple_get_conf_commands(commands).await
+            }
+            PGenCommand::MultipleSetConfCommands(commands) => {
+                self.send_multiple_set_conf_commands(&commands).await
+            }
         }
     }
 }
@@ -319,14 +351,14 @@ impl PGenTestPattern {
             format,
             position: cfg.position,
             patch_size: cfg.patch_size,
-            bit_depth: cfg.bit_depth,
+            bit_depth: cfg.bit_depth as u8,
             rgb: cfg.patch_colour,
             bg_rgb: cfg.background_colour,
         }
     }
 
     pub fn blank(format: ColorFormat, cfg: &PGenPatternConfig) -> Self {
-        let rgb_range = compute_rgb_range(cfg.limited_range, cfg.bit_depth);
+        let rgb_range = compute_rgb_range(cfg.limited_range, cfg.bit_depth as u8);
         let rgb = [*rgb_range.start(); 3];
         let bg_rgb = rgb;
 
@@ -334,7 +366,7 @@ impl PGenTestPattern {
             format,
             position: cfg.position,
             patch_size: cfg.patch_size,
-            bit_depth: cfg.bit_depth,
+            bit_depth: cfg.bit_depth as u8,
             rgb,
             bg_rgb,
         }

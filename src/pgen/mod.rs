@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumIter, FromRepr};
 
 pub mod client;
 pub mod commands;
@@ -6,53 +7,207 @@ pub mod controller;
 pub mod pattern_config;
 pub mod utils;
 
-#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
-pub enum DynamicRange {
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum BitDepth {
+    #[strum(to_string = "8-bit")]
+    Eight = 8,
     #[default]
-    Sdr,
-    Hdr10,
-    LlDv,
-    StdDovi,
+    #[strum(to_string = "10-bit")]
+    Ten = 10,
 }
 
-#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum DynamicRange {
+    #[default]
+    #[strum(to_string = "SDR")]
+    Sdr,
+    #[strum(to_string = "HDR10")]
+    Hdr10,
+    #[strum(to_string = "DoVi")]
+    Dovi,
+}
+
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
 pub enum ColorFormat {
     #[default]
+    #[strum(to_string = "RGB")]
     Rgb = 0,
     YCbCr444,
     YCbCr422,
-    YCbCr420,
 }
 
-impl DynamicRange {
-    pub const fn to_str(self) -> &'static str {
-        match self {
-            Self::Sdr => "SDR",
-            Self::Hdr10 => "HDR10",
-            Self::LlDv => "LLDV",
-            Self::StdDovi => "TV-led DoVi",
-        }
-    }
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum QuantRange {
+    Limited = 1,
+    #[default]
+    Full,
 }
 
-impl ColorFormat {
-    pub const fn to_str(self) -> &'static str {
-        match self {
-            Self::Rgb => "RGB",
-            Self::YCbCr444 => "YCbCr444",
-            Self::YCbCr422 => "YCbCr422",
-            Self::YCbCr420 => "YCbCr420",
-        }
-    }
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum Colorimetry {
+    #[default]
+    Default = 0,
+    #[strum(to_string = "BT.709 (YCC)")]
+    Bt709Ycc = 2,
+    #[strum(to_string = "BT.2020 (RGB)")]
+    Bt2020Rgb = 9,
 }
-impl From<u8> for ColorFormat {
-    fn from(v: u8) -> Self {
-        match v {
-            0 => Self::Rgb,
-            1 => Self::YCbCr444,
-            2 => Self::YCbCr422,
-            3 => Self::YCbCr420,
-            _ => unreachable!(),
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct HdrMetadata {
+    pub eotf: HdrEotf,
+    pub primaries: Primaries,
+    pub max_mdl: u16,
+    pub min_mdl: u16,
+    pub maxcll: u16,
+    pub maxfall: u16,
+}
+
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum HdrEotf {
+    #[strum(to_string = "Gamma (SDR)")]
+    GammaSdr = 0,
+    #[strum(to_string = "Gamma (HDR)")]
+    GammaHdr = 1,
+    #[default]
+    #[strum(to_string = "ST.2084 / PQ")]
+    Pq = 2,
+    #[strum(to_string = "Hybrid log-gamma / HLG")]
+    Hlg = 3,
+}
+
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum Primaries {
+    #[strum(to_string = "Rec.709")]
+    Rec709 = 0,
+    #[strum(to_string = "Rec.2020 / D65")]
+    Rec2020 = 1,
+    #[default]
+    #[strum(to_string = "P3 / D65")]
+    DisplayP3 = 2,
+    #[strum(to_string = "DCI-P3 (Theater)")]
+    DciP3 = 3,
+    #[strum(to_string = "P3 D60 (ACES Cinema)")]
+    P3D60 = 4,
+}
+
+#[derive(
+    Display,
+    AsRefStr,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Deserialize,
+    Serialize,
+    PartialEq,
+    Eq,
+    EnumIter,
+    FromRepr,
+)]
+pub enum DoviMapMode {
+    #[default]
+    Absolute = 1,
+    Relative = 2,
+}
+
+impl From<bool> for QuantRange {
+    fn from(v: bool) -> Self {
+        if v {
+            Self::Limited
+        } else {
+            Self::Full
         }
     }
 }
