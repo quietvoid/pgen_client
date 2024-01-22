@@ -1,14 +1,16 @@
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
+use crate::utils::Rgb;
+
 use super::BitDepth;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct PGenPatternConfig {
     pub limited_range: bool,
     pub bit_depth: BitDepth,
-    pub patch_colour: [u16; 3],
-    pub background_colour: [u16; 3],
+    pub patch_colour: Rgb,
+    pub background_colour: Rgb,
 
     pub position: (u16, u16),
     pub preset_position: TestPatternPosition,

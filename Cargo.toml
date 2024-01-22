@@ -18,11 +18,17 @@ base64 = "0.21.7"
 serde = "1.0.195"
 serde_derive = "1.0.195"
 yaserde = { version = "0.9.1", features = ["yaserde_derive"] }
-eframe = { version = "0.25.0", features = ["persistence"] }
-tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
+
+tokio = { version = "1.35.1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }
 tokio-stream = "0.1.14"
 futures = "0.3.30"
 async-stream = "0.3.5"
+
+eframe = { version = "0.25.0", features = ["persistence"] }
+egui_extras = "0.25.0"
+egui_plot = "0.25.0"
+ecolor = "0.25.0"
+kolor = "0.1.9"
 
 [profile.release]
 opt-level = 3

@@ -7,6 +7,7 @@ use yaserde::YaDeserialize;
 
 use crate::pgen::BitDepth;
 use crate::pgen::{controller::PGenControllerCmd, pattern_config::PGenPatternConfig};
+use crate::utils::Rgb;
 
 const RESOLVE_INTERFACE_ADDRESS: &str = "127.0.0.1:20002";
 
@@ -103,7 +104,7 @@ impl ResolvePattern {
 }
 
 impl ResolveColor {
-    pub fn to_array(&self) -> [u16; 3] {
+    pub fn to_array(&self) -> Rgb {
         [self.red, self.green, self.blue]
     }
 }

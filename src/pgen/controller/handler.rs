@@ -1,9 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use tokio::sync::mpsc::Sender;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::app::PGenAppUpdate;
 use crate::pgen::commands::PGenSetConfCommand;
@@ -17,7 +18,7 @@ use crate::pgen::{BitDepth, Colorimetry, HdrEotf, Primaries, QuantRange};
 
 use super::{DisplayMode, PGenControllerContext, PGenControllerState};
 
-pub type PGenControllerHandle = Arc<RwLock<PGenController>>;
+pub type PGenControllerHandle = Arc<Mutex<PGenController>>;
 
 #[derive(Debug)]
 pub struct PGenController {
@@ -41,8 +42,15 @@ impl PGenController {
 
     pub async fn set_initial_state(&mut self, state: PGenControllerState) {
         self.state = state;
-        self.pgen_command(PGenCommand::UpdateSocket(self.state.socket_addr))
-            .await;
+
+        let res = {
+            let mut client = self.ctx.client.lock().await;
+            client
+                .send_generic_command(PGenCommand::UpdateSocket(self.state.socket_addr))
+                .await
+        };
+
+        self.handle_pgen_response(res);
     }
 
     pub fn update_ui(&self) {
@@ -191,7 +199,7 @@ impl PGenController {
         let valid_display_mode = self.state.pgen_info.as_ref().and_then(|info| {
             info.display_modes
                 .iter()
-                .find(|mode| mode.resolution.0 == 1920 && mode.refresh_rate == 60.0)
+                .find(|mode| mode.resolution == (1920, 1080) && mode.refresh_rate == 60.0)
         });
 
         if let Some(valid_mode) = valid_display_mode.copied() {
@@ -259,8 +267,16 @@ impl PGenController {
     }
 
     pub async fn set_blank(&mut self) {
-        let pattern = PGenTestPattern::blank(self.get_color_format(), &self.state.pattern_config);
-        self.pgen_command(PGenCommand::TestPattern(pattern)).await;
+        let mut config = self.state.pattern_config;
+        config.patch_colour = Default::default();
+        config.background_colour = Default::default();
+
+        self.send_pattern_from_cfg(config).await;
+    }
+
+    pub async fn send_pattern_and_wait(&mut self, config: PGenPatternConfig) {
+        self.send_pattern_from_cfg(config).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     pub fn parse_multiple_get_conf_commands_res(&mut self, res: Vec<(PGenGetConfCommand, String)>) {

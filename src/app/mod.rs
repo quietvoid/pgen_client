@@ -1,25 +1,33 @@
+use eframe::{egui, epaint::Color32};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{
-    generators::{GeneratorCmd, GeneratorState},
+    external::ExternalJobCmd,
+    generators::{GeneratorState, GeneratorType},
     pgen::controller::{PGenControllerCmd, PGenControllerState},
+    spotread::ReadingResult,
 };
 
+mod calibration;
 pub mod eframe_app;
+mod external_generator_ui;
+mod internal_generator_ui;
 pub mod pgen_app;
 
 pub use pgen_app::PGenApp;
+
+pub use calibration::CalibrationState;
 
 #[derive(Debug)]
 pub struct PGenAppContext {
     pub rx: Receiver<PGenAppUpdate>,
 
     pub controller_tx: Sender<PGenControllerCmd>,
-    pub generator_tx: Sender<GeneratorCmd>,
+    pub external_tx: Sender<ExternalJobCmd>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum PGenAppUpdate {
     GeneratorListening(bool),
     InitialSetup {
@@ -29,11 +37,30 @@ pub enum PGenAppUpdate {
     NewState(PGenControllerState),
     Processing,
     DoneProcessing,
+    SpotreadStarted(bool),
+    SpotreadRes(Option<ReadingResult>),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct PGenAppSavedState {
     pub state: PGenControllerState,
     pub editing_socket: (String, String),
+    pub generator_type: GeneratorType,
     pub generator_state: GeneratorState,
+    pub cal_state: CalibrationState,
+}
+
+fn status_color_active(ctx: &egui::Context, active: bool) -> Color32 {
+    let dark_mode = ctx.style().visuals.dark_mode;
+    if active {
+        if dark_mode {
+            Color32::DARK_GREEN
+        } else {
+            Color32::LIGHT_GREEN
+        }
+    } else if dark_mode {
+        Color32::DARK_RED
+    } else {
+        Color32::LIGHT_RED
+    }
 }

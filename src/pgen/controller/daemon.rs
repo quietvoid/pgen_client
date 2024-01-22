@@ -4,10 +4,10 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::app::PGenAppUpdate;
 
-use super::{handler::PGenController, PGenControllerCmd};
+use super::{PGenControllerCmd, PGenControllerHandle};
 
 pub fn start_pgen_controller_worker(
-    controller: PGenController,
+    controller: PGenControllerHandle,
     controller_rx: Receiver<PGenControllerCmd>,
 ) {
     tokio::spawn(async move {
@@ -16,7 +16,7 @@ pub fn start_pgen_controller_worker(
 }
 
 async fn init_command_loop(
-    mut controller: PGenController,
+    controller_handle: PGenControllerHandle,
     controller_rx: Receiver<PGenControllerCmd>,
 ) {
     let reconnect_period = std::time::Duration::from_secs(30 * 60);
@@ -30,6 +30,7 @@ async fn init_command_loop(
     loop {
         futures::select! {
             cmd = rx.select_next_some() => {
+                let mut controller = controller_handle.lock().await;
                 controller.ctx.app_tx.as_ref().and_then(|app_tx| app_tx.try_send(PGenAppUpdate::Processing).ok());
 
                 match cmd {
@@ -60,9 +61,11 @@ async fn init_command_loop(
                 controller.update_ui();
             }
             _ = heartbeat_stream.tick().fuse() => {
+                let mut controller = controller_handle.lock().await;
                 controller.send_heartbeat().await;
             }
             _ = reconnect_stream.tick().fuse() => {
+                let mut controller = controller_handle.lock().await;
                 controller.reconnect().await;
             }
         }

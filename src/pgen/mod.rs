@@ -5,7 +5,6 @@ pub mod client;
 pub mod commands;
 pub mod controller;
 pub mod pattern_config;
-pub mod utils;
 
 #[derive(
     Display,
