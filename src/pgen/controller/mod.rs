@@ -132,7 +132,7 @@ impl DisplayMode {
             .split('x')
             .filter_map(|dim| dim.trim_end().parse::<u16>().ok())
             .next_tuple()
-            .ok_or(anyhow!("Failed parsing display resolution"))?;
+            .ok_or_else(|| anyhow!("Failed parsing display resolution"))?;
 
         // space
         chars.next();

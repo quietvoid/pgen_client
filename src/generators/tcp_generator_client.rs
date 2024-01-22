@@ -6,12 +6,14 @@ use tokio::sync::mpsc::Sender;
 use tokio::{io::AsyncWriteExt, net::TcpStream, sync::RwLock};
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::app::PGenAppUpdate;
+use crate::external::ExternalJobCmd;
 use crate::pgen::controller::PGenControllerCmd;
 
 use super::resolve::{
     handle_resolve_pattern_message, handle_resolve_tcp_stream_message, resolve_connect_tcp_stream,
 };
-use super::{GeneratorClientCmd, GeneratorCmd, GeneratorInterface};
+use super::{GeneratorClientCmd, GeneratorInterface};
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone, Copy)]
 pub enum TcpGeneratorInterface {
@@ -26,13 +28,14 @@ pub struct TcpGeneratorClient {
     running: bool,
 
     controller_tx: Sender<PGenControllerCmd>,
-    generator_tx: Sender<GeneratorCmd>,
+    external_tx: Sender<ExternalJobCmd>,
 }
 pub type GeneratorClientHandle = Arc<RwLock<TcpGeneratorClient>>;
 
 pub async fn start_tcp_generator_client(
+    app_tx: Sender<PGenAppUpdate>,
     controller_tx: Sender<PGenControllerCmd>,
-    generator_tx: Sender<GeneratorCmd>,
+    external_tx: Sender<ExternalJobCmd>,
     interface: TcpGeneratorInterface,
 ) -> anyhow::Result<Sender<GeneratorClientCmd>> {
     // Try initial connection first before spawning loop task
@@ -56,7 +59,7 @@ pub async fn start_tcp_generator_client(
             buf: vec![0; 512],
             running: true,
             controller_tx,
-            generator_tx,
+            external_tx,
         };
 
         loop {
@@ -75,6 +78,7 @@ pub async fn start_tcp_generator_client(
                     match msg {
                         GeneratorClientCmd::Shutdown => {
                             client.shutdown().await;
+                            app_tx.try_send(PGenAppUpdate::GeneratorListening(false)).ok();
                             break;
                         },
                     }
@@ -152,8 +156,8 @@ impl TcpGeneratorClient {
 
     fn send_generator_stopped(&self) {
         let client = GeneratorInterface::Tcp(self.interface).client();
-        self.generator_tx
-            .try_send(GeneratorCmd::StopClient(client))
+        self.external_tx
+            .try_send(ExternalJobCmd::StopGeneratorClient(client))
             .ok();
     }
 }

@@ -1,6 +1,8 @@
 use std::ops::RangeInclusive;
 
-use super::pattern_config::PGenPatternConfig;
+use crate::pgen::pattern_config::PGenPatternConfig;
+
+pub type Rgb = [u16; 3];
 
 pub fn compute_rgb_range(limited_range: bool, depth: u8) -> RangeInclusive<u16> {
     let depth = depth as u32;
@@ -70,7 +72,7 @@ pub fn scale_8b_rgb_to_10b(
 }
 
 // Converts for 10 bit otherwise casts to u8
-pub fn rgb_10b_to_8b(depth: u8, rgb: [u16; 3]) -> [u8; 3] {
+pub fn rgb_10b_to_8b(depth: u8, rgb: Rgb) -> [u8; 3] {
     if depth > 8 {
         rgb.map(|c| (c / 4) as u8)
     } else {
@@ -112,4 +114,20 @@ pub fn scale_pattern_config_rgb_values(
                 *c = val.round() as u16;
             });
     }
+}
+
+/// Returns the min as well max - min as the real max value
+pub fn get_rgb_real_range(limited_range: bool, bit_depth: u8) -> (u16, u16) {
+    let rgb_range = compute_rgb_range(limited_range, bit_depth);
+    let min = *rgb_range.start();
+    let real_max = *rgb_range.end() - min;
+
+    (min, real_max)
+}
+
+pub fn rgb_to_float(rgb: Rgb, limited_range: bool, bit_depth: u8) -> [f32; 3] {
+    let (min, real_max) = get_rgb_real_range(limited_range, bit_depth);
+    let real_max = real_max as f32;
+
+    rgb.map(|c| (c - min) as f32 / real_max)
 }

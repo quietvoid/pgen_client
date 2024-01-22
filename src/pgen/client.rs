@@ -7,9 +7,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
+use crate::utils::{compute_rgb_range, Rgb};
+
 use super::commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand, PGenSetConfCommand};
 use super::pattern_config::PGenPatternConfig;
-use super::utils::compute_rgb_range;
 use super::ColorFormat;
 
 const PGEN_CMD_END_BYTE_STR: &str = "\x02\x0D";
@@ -40,8 +41,8 @@ pub struct PGenTestPattern {
     pub bit_depth: u8,
 
     // In 10 bit range
-    pub rgb: [u16; 3],
-    pub bg_rgb: [u16; 3],
+    pub rgb: Rgb,
+    pub bg_rgb: Rgb,
 }
 
 impl PGenClient {

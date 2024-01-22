@@ -1,28 +1,38 @@
 use std::net::{IpAddr, SocketAddr};
 
-use eframe::egui::{self, Layout, Sense};
-use eframe::epaint::{Color32, Stroke, Vec2};
+use eframe::egui::{self, Context, Sense, Ui};
+use eframe::epaint::{Stroke, Vec2};
 use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::generators::{GeneratorClient, GeneratorCmd, GeneratorState};
+use crate::app::calibration::handle_spotread_result;
+use crate::calibration::ReadingTarget;
+use crate::external::ExternalJobCmd;
+use crate::generators::{GeneratorState, GeneratorType};
 use crate::pgen::commands::{PGenCommand, PGenSetConfCommand};
 use crate::pgen::controller::{PGenControllerCmd, PGenControllerState, PGenInfo, PGenOutputConfig};
 use crate::pgen::pattern_config::{TestPatternPosition, TestPatternSize};
-use crate::pgen::utils::{
-    compute_rgb_range, rgb_10b_to_8b, scale_8b_rgb_to_10b, scale_pattern_config_rgb_values,
-};
 use crate::pgen::{
     BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
 };
+use crate::utils::{
+    compute_rgb_range, rgb_10b_to_8b, rgb_to_float, scale_8b_rgb_to_10b,
+    scale_pattern_config_rgb_values,
+};
 
-pub use super::{PGenAppContext, PGenAppSavedState, PGenAppUpdate};
+use super::calibration::add_calibration_ui;
+use super::external_generator_ui::add_external_generator_ui;
+use super::internal_generator_ui::add_internal_generator_ui;
+use super::status_color_active;
+pub use super::{calibration::CalibrationState, PGenAppContext, PGenAppSavedState, PGenAppUpdate};
 
 pub struct PGenApp {
     pub ctx: PGenAppContext,
     pub state: PGenControllerState,
     pub editing_socket: (String, String),
+    pub generator_type: GeneratorType,
     pub generator_state: GeneratorState,
+    pub cal_state: CalibrationState,
 
     pub processing: bool,
     pub requested_close: bool,
@@ -33,12 +43,12 @@ impl PGenApp {
     pub fn new(
         rx: Receiver<PGenAppUpdate>,
         controller_tx: Sender<PGenControllerCmd>,
-        generator_tx: Sender<GeneratorCmd>,
+        external_tx: Sender<ExternalJobCmd>,
     ) -> Self {
         let ctx = PGenAppContext {
             rx,
             controller_tx,
-            generator_tx,
+            external_tx,
         };
 
         let state: PGenControllerState = Default::default();
@@ -48,13 +58,12 @@ impl PGenApp {
             ctx,
             state,
             editing_socket: (socket_addr.ip().to_string(), socket_addr.port().to_string()),
-            generator_state: GeneratorState {
-                client: GeneratorClient::Resolve,
-                listening: false,
-            },
-            processing: false,
-            requested_close: false,
-            allowed_to_close: false,
+            generator_type: Default::default(),
+            generator_state: Default::default(),
+            cal_state: Default::default(),
+            processing: Default::default(),
+            requested_close: Default::default(),
+            allowed_to_close: Default::default(),
         }
     }
 
@@ -64,53 +73,82 @@ impl PGenApp {
 
         // Force message to be sent
         let controller_tx = self.ctx.controller_tx.clone();
+        let external_tx = self.ctx.external_tx.clone();
+        let generator_client = self.generator_state.client;
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 controller_tx.send(PGenControllerCmd::Disconnect).await.ok();
+                external_tx
+                    .send(ExternalJobCmd::StopGeneratorClient(generator_client))
+                    .await
+                    .ok();
+                external_tx
+                    .send(ExternalJobCmd::StopSpotreadProcess)
+                    .await
+                    .ok();
             });
         });
+    }
+
+    fn initial_setup(&mut self, egui_ctx: Context, saved_state: Option<PGenAppSavedState>) {
+        self.ctx
+            .controller_tx
+            .try_send(PGenControllerCmd::SetGuiCallback(egui_ctx))
+            .ok();
+
+        if let Some(saved_state) = saved_state {
+            self.update_from_new_state(saved_state.state);
+            self.editing_socket = saved_state.editing_socket;
+
+            self.cal_state = saved_state.cal_state;
+            self.cal_state.initial_setup();
+
+            self.generator_type = saved_state.generator_type;
+            self.generator_state = saved_state.generator_state;
+            self.generator_state.initial_setup();
+
+            self.ctx
+                .controller_tx
+                .try_send(PGenControllerCmd::SetInitialState(self.state.clone()))
+                .ok();
+        }
     }
 
     pub(crate) fn check_responses(&mut self) {
         while let Ok(msg) = self.ctx.rx.try_recv() {
             match msg {
-                PGenAppUpdate::GeneratorListening(v) => {
-                    log::debug!("Generator listening: {v}");
-                    self.generator_state.listening = v
-                }
                 PGenAppUpdate::InitialSetup {
                     egui_ctx,
                     saved_state,
                 } => {
-                    self.ctx
-                        .controller_tx
-                        .try_send(PGenControllerCmd::SetGuiCallback(egui_ctx))
-                        .ok();
-
-                    if let Some(saved_state) = saved_state {
-                        self.update_from_new_state(saved_state.state);
-                        self.editing_socket = saved_state.editing_socket;
-                        self.generator_state = saved_state.generator_state;
-
-                        self.ctx
-                            .controller_tx
-                            .try_send(PGenControllerCmd::SetInitialState(self.state.clone()))
-                            .ok();
-                    }
+                    self.initial_setup(egui_ctx, saved_state);
                 }
                 PGenAppUpdate::NewState(state) => self.update_from_new_state(state),
                 PGenAppUpdate::Processing => self.processing = true,
                 PGenAppUpdate::DoneProcessing => self.processing = false,
+                PGenAppUpdate::GeneratorListening(v) => {
+                    log::debug!("Generator listening: {v}");
+                    self.generator_state.listening = v
+                }
+                PGenAppUpdate::SpotreadStarted(v) => {
+                    log::debug!("spotread: started changed to {v}");
+                    self.cal_state.spotread_started = v;
+                }
+                PGenAppUpdate::SpotreadRes(result) => {
+                    handle_spotread_result(self, result);
+                }
             }
         }
 
-        if self.requested_close && !self.processing {
+        let processing =
+            self.processing || self.generator_state.listening || self.cal_state.spotread_started;
+        if self.requested_close && !processing {
             self.allowed_to_close = true;
             self.ctx.rx.close();
         }
     }
 
-    pub(crate) fn set_top_bar(&mut self, ctx: &egui::Context) {
+    pub(crate) fn set_top_bar(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 egui::widgets::global_dark_light_mode_switch(ui);
@@ -130,7 +168,7 @@ impl PGenApp {
         });
     }
 
-    pub(crate) fn set_central_panel(&mut self, ctx: &egui::Context) {
+    pub(crate) fn set_central_panel(&mut self, ctx: &Context) {
         let can_edit_configs = !self.processing && !self.generator_state.listening;
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -143,16 +181,22 @@ impl PGenApp {
             });
             ui.separator();
 
-            ui.add_enabled_ui(!self.processing, |ui| {
-                self.add_generator_config(ctx, ui);
-            });
+            self.add_generators_ui(ctx, ui);
         });
     }
 
-    fn add_default_config(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    pub(crate) fn set_right_panel(&mut self, ctx: &Context) {
+        if self.generator_type.is_internal() {
+            egui::SidePanel::right("plots_panel").show(ctx, |ui| {
+                add_calibration_ui(self, ui);
+            });
+        }
+    }
+
+    fn add_default_config(&mut self, ctx: &Context, ui: &mut Ui) {
         let connected = self.state.connected_state.connected;
 
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+        ui.horizontal(|ui| {
             ui.label("IP Address");
             let ip_res =
                 ui.add(egui::TextEdit::singleline(&mut self.editing_socket.0).desired_width(255.0));
@@ -203,17 +247,7 @@ impl PGenApp {
 
                     ui.label(status_str);
 
-                    let status_color = if connected {
-                        if ctx.style().visuals.dark_mode {
-                            Color32::DARK_GREEN
-                        } else {
-                            Color32::LIGHT_GREEN
-                        }
-                    } else if ctx.style().visuals.dark_mode {
-                        Color32::DARK_RED
-                    } else {
-                        Color32::LIGHT_RED
-                    };
+                    let status_color = status_color_active(ctx, connected);
                     let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
                     painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
 
@@ -261,7 +295,7 @@ impl PGenApp {
         });
     }
 
-    fn add_output_info(&mut self, ui: &mut egui::Ui) {
+    fn add_output_info(&mut self, ui: &mut Ui) {
         let output_config = self
             .state
             .connected_state
@@ -283,7 +317,7 @@ impl PGenApp {
         }
     }
 
-    fn add_base_output_config(ctx: &PGenAppContext, pgen_info: &mut PGenInfo, ui: &mut egui::Ui) {
+    fn add_base_output_config(ctx: &PGenAppContext, pgen_info: &mut PGenInfo, ui: &mut Ui) {
         let output_cfg = &mut pgen_info.output_config;
         let is_dovi = output_cfg.dynamic_range == DynamicRange::Dovi;
 
@@ -481,11 +515,7 @@ impl PGenApp {
         });
     }
 
-    fn add_hdr_output_config(
-        ctx: &PGenAppContext,
-        output_cfg: &mut PGenOutputConfig,
-        ui: &mut egui::Ui,
-    ) {
+    fn add_hdr_output_config(ctx: &PGenAppContext, output_cfg: &mut PGenOutputConfig, ui: &mut Ui) {
         ui.vertical(|ui| {
             let hdr = &mut output_cfg.hdr_meta;
             ui.heading("HDR metadata / DRM infoframe");
@@ -617,7 +647,7 @@ impl PGenApp {
         });
     }
 
-    fn add_pattern_config_grid(&mut self, ui: &mut egui::Ui) {
+    fn add_pattern_config_grid(&mut self, ui: &mut Ui) {
         let connected = self.state.connected_state.connected;
         let old_limited_range = self.state.pattern_config.limited_range;
         let old_depth = self.state.pattern_config.bit_depth as u8;
@@ -770,10 +800,7 @@ impl PGenApp {
                     }
 
                     if ui.button("Blank pattern").clicked() {
-                        self.ctx
-                            .controller_tx
-                            .try_send(PGenControllerCmd::SetBlank)
-                            .ok();
+                        self.set_blank();
                     }
                 });
                 ui.end_row();
@@ -823,54 +850,38 @@ impl PGenApp {
         }
     }
 
-    fn add_generator_config(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
-        ui.with_layout(Layout::left_to_right(egui::Align::Min), |ui| {
-            ui.label("Generator client");
-            ui.add_enabled_ui(!self.generator_state.listening, |ui| {
-                egui::ComboBox::from_id_source(egui::Id::new("generator_client"))
-                    .selected_text(self.generator_state.client.as_ref())
+    fn add_generators_ui(&mut self, ctx: &Context, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.heading("Pattern generator");
+
+            let can_select_generator = !self.processing
+                && !self.cal_state.spotread_started
+                && !self.generator_state.listening;
+            ui.add_enabled_ui(can_select_generator, |ui| {
+                egui::ComboBox::from_id_source(egui::Id::new("generator_type"))
+                    .selected_text(self.generator_type.as_ref())
                     .show_ui(ui, |ui| {
-                        for client in GeneratorClient::iter() {
+                        for gen_type in GeneratorType::iter() {
                             ui.selectable_value(
-                                &mut self.generator_state.client,
-                                client,
-                                client.as_ref(),
+                                &mut self.generator_type,
+                                gen_type,
+                                gen_type.as_ref(),
                             );
                         }
                     });
             });
-
-            let generator_label = if self.generator_state.listening {
-                "Stop generator client"
-            } else {
-                "Start generator client"
-            };
-            let status_color = if self.generator_state.listening {
-                if ctx.style().visuals.dark_mode {
-                    Color32::DARK_GREEN
-                } else {
-                    Color32::LIGHT_GREEN
-                }
-            } else if ctx.style().visuals.dark_mode {
-                Color32::DARK_RED
-            } else {
-                Color32::LIGHT_RED
-            };
-            ui.add_enabled_ui(self.state.connected_state.connected, |ui| {
-                if ui.button(generator_label).clicked() {
-                    let cmd = if self.generator_state.listening {
-                        GeneratorCmd::StopClient(self.generator_state.client)
-                    } else {
-                        GeneratorCmd::StartClient(self.generator_state.client)
-                    };
-
-                    self.ctx.generator_tx.try_send(cmd).ok();
-                }
-
-                let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
-                painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
-            });
         });
+
+        match self.generator_type {
+            GeneratorType::Internal => {
+                add_internal_generator_ui(self, ctx, ui);
+            }
+            GeneratorType::External => {
+                ui.add_enabled_ui(!self.processing, |ui| {
+                    add_external_generator_ui(self, ctx, ui);
+                });
+            }
+        }
     }
 
     pub fn set_config_colour_from_srgb(&mut self, depth: u8, srgb: [u8; 3], background: bool) {
@@ -928,6 +939,38 @@ impl PGenApp {
 
             (max_w, max_h, max_pos_x, max_pos_y)
         })
+    }
+
+    pub fn set_blank(&self) {
+        self.ctx
+            .controller_tx
+            .try_send(PGenControllerCmd::SetBlank)
+            .ok();
+    }
+
+    pub fn calibration_send_measure_selected_patch(&self) {
+        let selected_patch = self.cal_state.internal_gen.selected_patch();
+
+        if let Some(patch) = selected_patch {
+            let mut config = self.state.pattern_config;
+            config.patch_colour = patch.rgb;
+
+            let ref_rgb = rgb_to_float(
+                config.patch_colour,
+                config.limited_range,
+                config.bit_depth as u8,
+            );
+
+            let target = ReadingTarget {
+                ref_rgb,
+                colorspace: self.cal_state.target_csp,
+            };
+
+            self.ctx
+                .external_tx
+                .try_send(ExternalJobCmd::SpotreadMeasure((config, target)))
+                .ok();
+        }
     }
 }
 
