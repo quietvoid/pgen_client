@@ -3,7 +3,13 @@ use itertools::Itertools;
 
 use crate::spotread::ReadingResult;
 
-pub fn draw_results_summary_ui(ui: &mut Ui, results: &[ReadingResult]) {
+use super::CalibrationState;
+
+pub fn draw_results_summary_ui(
+    ui: &mut Ui,
+    cal_state: &mut CalibrationState,
+    results: &[ReadingResult],
+) {
     let minmax = results
         .iter()
         .map(|res| res.xyy[2] as f64)
@@ -12,6 +18,12 @@ pub fn draw_results_summary_ui(ui: &mut Ui, results: &[ReadingResult]) {
 
     ui.heading("Results");
     ui.indent("cal_results_summary_indent", |ui| {
+        if ui.button("Clear results").clicked() {
+            cal_state.internal_gen.selected_idx = None;
+            cal_state.internal_gen.list.iter_mut().for_each(|e| {
+                e.result.take();
+            })
+        }
         egui::Grid::new("cal_results_summary_grid")
             .spacing([4.0, 4.0])
             .show(ui, |ui| {

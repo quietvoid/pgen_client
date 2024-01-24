@@ -1,10 +1,15 @@
-use eframe::egui::Ui;
+use eframe::{
+    egui::{Context, ScrollArea, TextureOptions, Ui},
+    epaint::{ColorImage, TextureHandle},
+};
 use serde::{Deserialize, Serialize};
 
+mod cie_diagram_plot;
 mod luminance_plot;
 mod results_summary;
 mod rgb_balance_plot;
 
+use cie_diagram_plot::draw_cie_diagram_plot;
 use luminance_plot::draw_luminance_plot;
 use rgb_balance_plot::draw_rgb_balance_plot;
 
@@ -14,13 +19,16 @@ use crate::{
     spotread::ReadingResult,
 };
 
-use self::results_summary::draw_results_summary_ui;
+pub use cie_diagram_plot::compute_cie_chromaticity_diagram_worker;
+use results_summary::draw_results_summary_ui;
 
 use super::PGenApp;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct CalibrationState {
     pub spotread_started: bool,
+    pub spotread_cli_args: Vec<(String, String)>,
+    pub spotread_tmp_args: (String, String),
 
     pub target_csp: TargetColorspace,
 
@@ -29,19 +37,32 @@ pub struct CalibrationState {
     pub oetf: bool,
 
     pub internal_gen: InternalGenerator,
+
+    #[serde(skip)]
+    pub cie_texture: Option<TextureHandle>,
+
+    pub show_rgb_balance_plot: bool,
+    pub show_luminance_plot: bool,
+    pub show_cie_diagram: bool,
 }
 
 pub(crate) fn add_calibration_ui(app: &mut PGenApp, ui: &mut Ui) {
-    ui.vertical(|ui| {
+    ScrollArea::vertical().show(ui, |ui| {
         let results = app.cal_state.internal_gen.results();
 
-        draw_results_summary_ui(ui, &results);
-        ui.separator();
+        if !results.is_empty() {
+            draw_results_summary_ui(ui, &mut app.cal_state, &results);
+            ui.separator();
+        }
 
-        draw_rgb_balance_plot(ui, &results);
+        draw_rgb_balance_plot(ui, &mut app.cal_state, &results);
         ui.separator();
 
         draw_luminance_plot(ui, &results, &mut app.cal_state);
+        ui.separator();
+
+        draw_cie_diagram_plot(ui, &mut app.cal_state, &results);
+        ui.add_space(10.0);
     });
 }
 
@@ -138,16 +159,28 @@ impl CalibrationState {
         self.spotread_started = false;
         self.internal_gen.started = false;
     }
+
+    pub fn set_cie_texture(&mut self, ctx: &Context, image: ColorImage) {
+        self.cie_texture.get_or_insert_with(|| {
+            ctx.load_texture("cie_xy_diagram_tex", image, TextureOptions::NEAREST)
+        });
+    }
 }
 
 impl Default for CalibrationState {
     fn default() -> Self {
         Self {
             spotread_started: false,
+            spotread_cli_args: vec![("-y".to_owned(), "-l".to_owned())],
+            spotread_tmp_args: Default::default(),
             target_csp: Default::default(),
             eotf: LuminanceEotf::Gamma22,
             oetf: true,
             internal_gen: Default::default(),
+            cie_texture: Default::default(),
+            show_rgb_balance_plot: true,
+            show_luminance_plot: true,
+            show_cie_diagram: true,
         }
     }
 }

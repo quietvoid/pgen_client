@@ -1,4 +1,7 @@
-use eframe::{egui, epaint::Color32};
+use eframe::{
+    egui,
+    epaint::{Color32, ColorImage},
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -17,7 +20,7 @@ pub mod pgen_app;
 
 pub use pgen_app::PGenApp;
 
-pub use calibration::CalibrationState;
+pub use calibration::{compute_cie_chromaticity_diagram_worker, CalibrationState};
 
 #[derive(Debug)]
 pub struct PGenAppContext {
@@ -27,21 +30,21 @@ pub struct PGenAppContext {
     pub external_tx: Sender<ExternalJobCmd>,
 }
 
-#[derive(Debug)]
 pub enum PGenAppUpdate {
     GeneratorListening(bool),
     InitialSetup {
         egui_ctx: eframe::egui::Context,
-        saved_state: Option<PGenAppSavedState>,
+        saved_state: Box<Option<PGenAppSavedState>>,
     },
     NewState(PGenControllerState),
     Processing,
     DoneProcessing,
     SpotreadStarted(bool),
     SpotreadRes(Option<ReadingResult>),
+    CieDiagramReady(ColorImage),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct PGenAppSavedState {
     pub state: PGenControllerState,
     pub editing_socket: (String, String),

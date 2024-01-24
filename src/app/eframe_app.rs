@@ -20,7 +20,7 @@ impl eframe::App for PGenApp {
         self.set_right_panel(ctx);
         self.set_central_panel(ctx);
 
-        self.check_responses();
+        self.check_responses(ctx);
 
         if self.requested_close && self.allowed_to_close {
             self.requested_close = false;

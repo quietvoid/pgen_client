@@ -93,7 +93,7 @@ impl PGenApp {
     fn initial_setup(&mut self, egui_ctx: Context, saved_state: Option<PGenAppSavedState>) {
         self.ctx
             .controller_tx
-            .try_send(PGenControllerCmd::SetGuiCallback(egui_ctx))
+            .try_send(PGenControllerCmd::SetGuiCallback(egui_ctx.clone()))
             .ok();
 
         if let Some(saved_state) = saved_state {
@@ -114,14 +114,14 @@ impl PGenApp {
         }
     }
 
-    pub(crate) fn check_responses(&mut self) {
+    pub(crate) fn check_responses(&mut self, egui_ctx: &Context) {
         while let Ok(msg) = self.ctx.rx.try_recv() {
             match msg {
                 PGenAppUpdate::InitialSetup {
                     egui_ctx,
                     saved_state,
                 } => {
-                    self.initial_setup(egui_ctx, saved_state);
+                    self.initial_setup(egui_ctx, *saved_state);
                 }
                 PGenAppUpdate::NewState(state) => self.update_from_new_state(state),
                 PGenAppUpdate::Processing => self.processing = true,
@@ -136,6 +136,9 @@ impl PGenApp {
                 }
                 PGenAppUpdate::SpotreadRes(result) => {
                     handle_spotread_result(self, result);
+                }
+                PGenAppUpdate::CieDiagramReady(image) => {
+                    self.cal_state.set_cie_texture(egui_ctx, image);
                 }
             }
         }

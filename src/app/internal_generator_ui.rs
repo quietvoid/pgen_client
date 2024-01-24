@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{self, Context, Sense, Ui},
+    egui::{self, Context, Sense, TextEdit, Ui},
     epaint::{vec2, Color32, Stroke, Vec2},
 };
 use egui_extras::{Column, TableBuilder};
@@ -16,8 +16,165 @@ const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];
 
 pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
     let pgen_connected = app.state.connected_state.connected;
-    let spotread_started = app.cal_state.spotread_started;
     let cal_started = app.cal_state.internal_gen.started;
+
+    ui.add_space(10.0);
+
+    ui.heading("spotread CLI args");
+    ui.add_enabled_ui(
+        !app.cal_state.spotread_started && !cal_started && !app.processing,
+        |ui| {
+            add_spotread_cli_args_ui(app, ui);
+        },
+    );
+
+    ui.add_space(5.0);
+    add_spotread_status_ui(app, ctx, ui);
+
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        ui.label("Target");
+        ui.add_enabled_ui(!cal_started, |ui| {
+            egui::ComboBox::from_id_source("target_colorspaces")
+                .selected_text(app.cal_state.target_csp.as_ref())
+                .width(150.0)
+                .show_ui(ui, |ui| {
+                    for csp in TargetColorspace::iter() {
+                        ui.selectable_value(&mut app.cal_state.target_csp, csp, csp.as_ref());
+                    }
+                });
+        });
+    });
+
+    ui.heading("Patch list");
+    ui.indent("patch_list_indent", |ui| {
+        ui.horizontal(|ui| {
+            let internal_gen = &mut app.cal_state.internal_gen;
+
+            ui.label("Preset");
+            ui.add_enabled_ui(!cal_started, |ui| {
+                egui::ComboBox::from_id_source("patch_list_presets")
+                    .selected_text(internal_gen.preset.as_ref())
+                    .width(200.0)
+                    .show_ui(ui, |ui| {
+                        for preset in PatchListPreset::iter() {
+                            ui.selectable_value(&mut internal_gen.preset, preset, preset.as_ref());
+                        }
+                    });
+                if ui.button("Load").clicked() {
+                    internal_gen.load_preset(&app.state.pattern_config);
+                }
+            });
+
+            /* TODO
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.button("Load file").clicked() {
+                }
+            })
+            */
+        });
+
+        ui.separator();
+
+        let avail_height = ui.available_height();
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.add_enabled_ui(!cal_started, |ui| {
+                    add_patch_list_table(app, ui, avail_height);
+                });
+            });
+
+            ui.vertical(|ui| {
+                let can_read_patches = {
+                    let internal_gen = &app.cal_state.internal_gen;
+
+                    pgen_connected
+                        && app.cal_state.spotread_started
+                        && !app.processing
+                        && !cal_started
+                        && !internal_gen.list.is_empty()
+                };
+                ui.add_enabled_ui(can_read_patches, |ui| {
+                    if ui.button("Measure patches").clicked() {
+                        {
+                            let internal_gen = &mut app.cal_state.internal_gen;
+                            internal_gen.started = true;
+                            internal_gen.auto_advance = true;
+                            internal_gen.selected_idx = Some(0);
+                        }
+
+                        app.calibration_send_measure_selected_patch();
+                    }
+
+                    let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
+                    if has_selected_patch {
+                        ui.add_space(5.0);
+                        if ui.button("Measure selected patch").clicked() {
+                            let internal_gen = &mut app.cal_state.internal_gen;
+                            internal_gen.started = true;
+                            internal_gen.auto_advance = false;
+
+                            app.calibration_send_measure_selected_patch();
+                        }
+                    }
+                });
+            })
+        });
+    });
+}
+
+fn add_spotread_cli_args_ui(app: &mut PGenApp, ui: &mut Ui) {
+    egui::Grid::new("spotread_cli_args_grid")
+        .spacing([4.0, 4.0])
+        .show(ui, |ui| {
+            ui.strong("Key");
+            ui.strong("Value");
+            ui.label("");
+            ui.end_row();
+
+            let actual_len = app.cal_state.spotread_cli_args.len();
+            for i in 0..=actual_len {
+                let real_row = i < actual_len;
+                {
+                    let args = if real_row {
+                        &mut app.cal_state.spotread_cli_args[i]
+                    } else {
+                        &mut app.cal_state.spotread_tmp_args
+                    };
+
+                    ui.add_sized(Vec2::new(75.0, 20.0), TextEdit::singleline(&mut args.0));
+                    let value_res =
+                        ui.add_sized(Vec2::new(300.0, 20.0), TextEdit::singleline(&mut args.1));
+
+                    let is_enabled = {
+                        let tmp_args = &app.cal_state.spotread_tmp_args;
+                        real_row || (!tmp_args.0.is_empty() && !tmp_args.1.is_empty())
+                    };
+                    let add_value_changed = is_enabled && !real_row && value_res.lost_focus();
+
+                    ui.add_enabled_ui(is_enabled, |ui| {
+                        let btn_label = if real_row { "Remove" } else { "Add" };
+                        if add_value_changed || ui.button(btn_label).clicked() {
+                            if real_row {
+                                app.cal_state.spotread_cli_args.remove(i);
+                            } else {
+                                let tmp_args = &mut app.cal_state.spotread_tmp_args;
+                                app.cal_state.spotread_cli_args.push(tmp_args.clone());
+
+                                tmp_args.0.clear();
+                                tmp_args.1.clear();
+                            }
+                        }
+                    });
+
+                    ui.end_row();
+                }
+            }
+        });
+}
+
+fn add_spotread_status_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
+    let spotread_started = app.cal_state.spotread_started;
 
     ui.horizontal(|ui| {
         let btn_label = if spotread_started {
@@ -25,6 +182,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
         } else {
             "Start spotread"
         };
+
         ui.add_enabled_ui(!app.processing, |ui| {
             if ui.button(btn_label).clicked() {
                 app.cal_state.internal_gen.started = false;
@@ -37,7 +195,9 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                 } else {
                     app.ctx
                         .external_tx
-                        .try_send(ExternalJobCmd::StartSpotreadProcess)
+                        .try_send(ExternalJobCmd::StartSpotreadProcess(
+                            app.cal_state.spotread_cli_args.to_owned(),
+                        ))
                         .ok();
                 }
             }
@@ -69,94 +229,9 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
             }
         }
     });
-
-    ui.add_space(10.0);
-    ui.horizontal(|ui| {
-        ui.label("Target");
-        ui.add_enabled_ui(!cal_started, |ui| {
-            egui::ComboBox::from_id_source("target_colorspaces")
-                .selected_text(app.cal_state.target_csp.as_ref())
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    for csp in TargetColorspace::iter() {
-                        ui.selectable_value(&mut app.cal_state.target_csp, csp, csp.as_ref());
-                    }
-                });
-        });
-    });
-
-    ui.heading("Patch list");
-    ui.indent("patch_list_indent", |ui| {
-        ui.horizontal(|ui| {
-            let internal_gen = &mut app.cal_state.internal_gen;
-
-            ui.label("Preset");
-            ui.add_enabled_ui(!cal_started, |ui| {
-                egui::ComboBox::from_id_source("patch_list_presets")
-                    .selected_text(internal_gen.preset.as_ref())
-                    .width(150.0)
-                    .show_ui(ui, |ui| {
-                        for preset in PatchListPreset::iter() {
-                            ui.selectable_value(&mut internal_gen.preset, preset, preset.as_ref());
-                        }
-                    });
-                if ui.button("Load").clicked() {
-                    internal_gen.load_preset(&app.state.pattern_config);
-                }
-            });
-
-            /* TODO
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("Load file").clicked() {
-                }
-            })
-            */
-        });
-
-        ui.separator();
-        ui.add_enabled_ui(!cal_started, |ui| {
-            add_patch_list_table(app, ui);
-        });
-    });
-    ui.add_space(5.0);
-
-    let can_read_patches = {
-        let internal_gen = &app.cal_state.internal_gen;
-
-        pgen_connected
-            && spotread_started
-            && !app.processing
-            && !cal_started
-            && !internal_gen.list.is_empty()
-    };
-    ui.add_enabled_ui(can_read_patches, |ui| {
-        ui.horizontal(|ui| {
-            if ui.button("Measure patches").clicked() {
-                {
-                    let internal_gen = &mut app.cal_state.internal_gen;
-                    internal_gen.started = true;
-                    internal_gen.auto_advance = true;
-                    internal_gen.selected_idx = Some(0);
-                }
-
-                app.calibration_send_measure_selected_patch();
-            }
-
-            let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
-            if has_selected_patch && ui.button("Measure selected patch").clicked() {
-                {
-                    let internal_gen = &mut app.cal_state.internal_gen;
-                    internal_gen.started = true;
-                    internal_gen.auto_advance = false;
-                }
-
-                app.calibration_send_measure_selected_patch();
-            }
-        });
-    });
 }
 
-fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui) {
+fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui, avail_height: f32) {
     let bit_depth = app.state.pattern_config.bit_depth as u8;
 
     let internal_gen = &mut app.cal_state.internal_gen;
@@ -171,7 +246,7 @@ fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui) {
         .column(patch_col)
         .column(patch_col)
         .resizable(true)
-        .min_scrolled_height(0.0)
+        .min_scrolled_height(avail_height - 25.0)
         .sense(Sense::click())
         .header(20.0, |mut header| {
             for label in PATCH_LIST_COLUMNS.iter().copied() {

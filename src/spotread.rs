@@ -1,4 +1,4 @@
-use std::{ops::Div, process::Stdio, time::Duration};
+use std::{iter::once, ops::Div, process::Stdio, time::Duration};
 
 use anyhow::{anyhow, bail, Result};
 use futures::{FutureExt, StreamExt};
@@ -49,12 +49,13 @@ pub fn start_spotread_worker(
     app_tx: Sender<PGenAppUpdate>,
     external_tx: Sender<ExternalJobCmd>,
     controller_handle: PGenControllerHandle,
+    cli_args: Vec<(String, String)>,
 ) -> Result<Sender<SpotreadCmd>> {
     let (tx, rx) = tokio::sync::mpsc::channel(5);
     let mut rx = ReceiverStream::new(rx).fuse();
 
     let mut spotread_proc = tokio::task::block_in_place(|| {
-        let mut spotread_proc = SpotreadProc::new(app_tx.clone())?;
+        let mut spotread_proc = SpotreadProc::new(app_tx.clone(), cli_args)?;
 
         tokio::runtime::Handle::current().block_on(async {
             loop {
@@ -145,9 +146,13 @@ pub fn start_spotread_worker(
 }
 
 impl SpotreadProc {
-    pub fn new(app_tx: Sender<PGenAppUpdate>) -> Result<Self> {
+    pub fn new(app_tx: Sender<PGenAppUpdate>, cli_args: Vec<(String, String)>) -> Result<Self> {
         let mut child = Command::new("spotread")
-            .args(["-y", "l"])
+            .args(
+                cli_args
+                    .iter()
+                    .flat_map(|kv| once(kv.0.as_str()).chain(once(kv.1.as_str()))),
+            )
             .env("ARGYLL_NOT_INTERACTIVE", "1")
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())

@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
     let app = PGenApp::new(app_rx, controller_tx, external_tx);
 
     pgen::controller::daemon::start_pgen_controller_worker(controller, controller_rx);
+    app::compute_cie_chromaticity_diagram_worker(app_tx.clone());
 
     let res = eframe::run_native(
         "pgen_client",
@@ -67,7 +68,7 @@ async fn main() -> Result<()> {
             app_tx
                 .try_send(PGenAppUpdate::InitialSetup {
                     egui_ctx: cc.egui_ctx.clone(),
-                    saved_state,
+                    saved_state: Box::new(saved_state),
                 })
                 .ok();
 
