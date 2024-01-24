@@ -3,15 +3,26 @@ use egui_plot::{Line, MarkerShape, Plot, Points};
 
 use crate::spotread::ReadingResult;
 
+use super::CalibrationState;
+
 const RED_MARKER_COLOR: Color32 = Color32::from_rgb(255, 26, 26);
 const GREEN_LINE_COLOR: Color32 = Color32::from_rgb(0, 230, 0);
 const GREEN_MARKER_COLOR: Color32 = Color32::from_rgb(0, 204, 0);
 const BLUE_MARKER_COLOR: Color32 = Color32::from_rgb(51, 51, 255);
 
-pub fn draw_rgb_balance_plot(ui: &mut Ui, results: &[ReadingResult]) {
-    ui.heading("RGB Balance");
+pub fn draw_rgb_balance_plot(
+    ui: &mut Ui,
+    cal_state: &mut CalibrationState,
+    results: &[ReadingResult],
+) {
+    ui.horizontal(|ui| {
+        ui.heading("RGB Balance");
+        ui.checkbox(&mut cal_state.show_rgb_balance_plot, "Show");
+    });
 
-    draw_plot(ui, results);
+    if cal_state.show_rgb_balance_plot {
+        draw_plot(ui, results);
+    }
 }
 
 fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
@@ -76,6 +87,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
         .view_aspect(2.0)
         .allow_scroll(false)
         .clamp_grid(true)
+        .show_background(false)
         .y_grid_spacer(egui_plot::uniform_grid_spacer(|_| [0.025, 0.10, 0.5]))
         .show(ui, |plot_ui| {
             plot_ui.line(ref_line);

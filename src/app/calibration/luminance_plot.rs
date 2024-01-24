@@ -17,21 +17,26 @@ pub fn draw_luminance_plot(
 ) {
     ui.horizontal(|ui| {
         ui.heading("Luminance");
+        ui.checkbox(&mut cal_state.show_luminance_plot, "Show");
 
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.checkbox(&mut cal_state.oetf, "OETF");
-            egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
-                .selected_text(cal_state.eotf.as_ref())
-                .show_ui(ui, |ui| {
-                    ui.set_min_width(115.0);
-                    for eotf in LuminanceEotf::iter() {
-                        ui.selectable_value(&mut cal_state.eotf, eotf, eotf.as_ref());
-                    }
-                });
-        });
+        if cal_state.show_luminance_plot {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.checkbox(&mut cal_state.oetf, "OETF");
+                egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
+                    .selected_text(cal_state.eotf.as_ref())
+                    .show_ui(ui, |ui| {
+                        ui.set_min_width(115.0);
+                        for eotf in LuminanceEotf::iter() {
+                            ui.selectable_value(&mut cal_state.eotf, eotf, eotf.as_ref());
+                        }
+                    });
+            });
+        }
     });
 
-    draw_plot(ui, results, cal_state.eotf, cal_state.oetf);
+    if cal_state.show_luminance_plot {
+        draw_plot(ui, results, cal_state.eotf, cal_state.oetf);
+    }
 }
 
 fn draw_plot(ui: &mut Ui, results: &[ReadingResult], eotf: LuminanceEotf, oetf: bool) {
@@ -93,6 +98,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], eotf: LuminanceEotf, oetf: 
         .view_aspect(2.0)
         .allow_scroll(false)
         .clamp_grid(true)
+        .show_background(false)
         .show(ui, |plot_ui| {
             plot_ui.line(ref_line);
 

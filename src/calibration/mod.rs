@@ -34,6 +34,16 @@ pub enum TargetColorspace {
     Rec2020,
 }
 
+pub const RGB_PRIMARIES: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+pub const RGB_SECONDARIES: [[f32; 3]; 6] = [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [1.0, 1.0, 0.0],
+    [1.0, 0.0, 1.0],
+    [0.0, 1.0, 1.0],
+];
+
 impl TargetColorspace {
     pub fn to_kolor(&self) -> ColorSpace {
         match self {

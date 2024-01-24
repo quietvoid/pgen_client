@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
 use crate::{
+    calibration::{RGB_PRIMARIES, RGB_SECONDARIES},
     pgen::pattern_config::PGenPatternConfig,
     spotread::ReadingResult,
     utils::{get_rgb_real_range, Rgb},
@@ -39,6 +40,8 @@ pub enum PatchListPreset {
     Greyscale,
     #[strum(to_string = "Saturation sweep")]
     SaturationSweep,
+    #[strum(to_string = "Min/peak brightness")]
+    MinMax,
 }
 
 impl InternalGenerator {
@@ -73,20 +76,10 @@ impl InternalGenerator {
 }
 
 impl PatchListPreset {
-    const RGB_PRIMARIES: [[f32; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    const RGB_SECONDARIES: [[f32; 3]; 6] = [
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [1.0, 1.0, 0.0],
-        [1.0, 0.0, 1.0],
-        [0.0, 1.0, 1.0],
-    ];
-
     pub fn rgb_float_list(&self) -> Vec<[f32; 3]> {
         match self {
-            Self::Primaries => Self::RGB_PRIMARIES.to_vec(),
-            Self::Secondaries => Self::RGB_SECONDARIES.to_vec(),
+            Self::Primaries => RGB_PRIMARIES.to_vec(),
+            Self::Secondaries => RGB_SECONDARIES.to_vec(),
             Self::Greyscale => {
                 let mut list = Vec::with_capacity(23);
                 list.extend(&[
@@ -109,11 +102,11 @@ impl PatchListPreset {
                 list
             }
             Self::SaturationSweep => {
-                let mut list = Vec::with_capacity(Self::RGB_SECONDARIES.len() * 4);
+                let mut list = Vec::with_capacity(RGB_SECONDARIES.len() * 4);
 
                 let points = 4;
                 let step = 1.0 / points as f32;
-                Self::RGB_SECONDARIES.into_iter().for_each(|e| {
+                RGB_SECONDARIES.into_iter().for_each(|e| {
                     let (h, _, v) = ecolor::hsv_from_rgb(e);
 
                     // In order of less sat to full sat
@@ -125,6 +118,9 @@ impl PatchListPreset {
                 });
 
                 list
+            }
+            Self::MinMax => {
+                vec![[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]]
             }
         }
     }

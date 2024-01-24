@@ -21,7 +21,7 @@ pub enum ExternalJobCmd {
     StopGeneratorClient(GeneratorClient),
 
     // spotread
-    StartSpotreadProcess,
+    StartSpotreadProcess(Vec<(String, String)>),
     StopSpotreadProcess,
     SpotreadMeasure((PGenPatternConfig, ReadingTarget)),
     SpotreadDoneMeasuring,
@@ -73,9 +73,9 @@ pub fn start_external_jobs_worker(
                                 }
                                 app_tx.try_send(PGenAppUpdate::DoneProcessing).ok();
                             },
-                            ExternalJobCmd::StartSpotreadProcess => {
+                            ExternalJobCmd::StartSpotreadProcess(cli_args) => {
                                 log::trace!("spotread: Starting process");
-                                match start_spotread_worker(app_tx.clone(), tx.clone(), controller_handle.clone()) {
+                                match start_spotread_worker(app_tx.clone(), tx.clone(), controller_handle.clone(), cli_args) {
                                     Ok(tx) => {
                                         spotread_tx.replace(tx);
                                         app_tx.try_send(PGenAppUpdate::SpotreadStarted(true)).ok();
