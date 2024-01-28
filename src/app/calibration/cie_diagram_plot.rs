@@ -7,7 +7,7 @@ use eframe::{
 };
 use egui_plot::{MarkerShape, Plot, PlotImage, PlotPoint, PlotPoints, Points, Polygon};
 use itertools::Itertools;
-use kolor::{
+use kolor_64::{
     details::{color::WhitePoint, transform::xyY_to_XYZ},
     spaces::CIE_XYZ,
     ColorConversion,
@@ -18,7 +18,10 @@ use ndarray::{
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{app::PGenAppUpdate, spotread::ReadingResult};
+use crate::{
+    app::PGenAppUpdate, calibration::LuminanceEotf, spotread::ReadingResult,
+    utils::normalize_float_rgb_components,
+};
 
 use super::CalibrationState;
 
@@ -35,8 +38,8 @@ const XY_BOTTOM_RIGHT: Vec2 = Vec2::new(0.73469, 0.00477);
 #[derive(Debug, Clone, Copy)]
 pub struct SpectralLocusPoint {
     _wavelength: u16,
-    x: f32,
-    y: f32,
+    x: f64,
+    y: f64,
 }
 
 pub fn draw_cie_diagram_plot(
@@ -60,10 +63,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
         CIE_1931_DIAGRAM_POINTS.get(),
     ) {
         let dark_mode = ui.ctx().style().visuals.dark_mode;
-        let locis_points: Vec<_> = locis_points
-            .iter()
-            .map(|e| [e.x as f64, e.y as f64])
-            .collect();
+        let locis_points: Vec<_> = locis_points.iter().map(|e| [e.x, e.y]).collect();
 
         let curve_stroke_colour = if dark_mode {
             Color32::from_rgba_unmultiplied(255, 255, 255, 64)
@@ -88,25 +88,30 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
             Color32::GRAY
         };
         let target_csp = cal_state.target_csp.to_kolor();
-        let target_primaries = target_csp
-            .primaries()
-            .values()
-            .map(|xy| xy.map(|c| c as f64))
-            .to_vec();
+        let target_primaries = target_csp.primaries().values().map(|xy| xy).to_vec();
         let target_gamut_triangle = Polygon::new(target_primaries)
             .stroke(Stroke::new(2.0, triangle_colour))
             .fill_color(Color32::TRANSPARENT);
 
-        // Secondaries targets
-        let target_rgb_to_xyy =
-            kolor::ColorConversion::new(target_csp, kolor::spaces::CIE_XYZ.to_cie_xyY());
+        let target_eotf = cal_state.eotf;
+        let results_points = results.iter().map(|res| {
+            let coords = [res.xyy[0], res.xyy[1]];
+            // OETF from assumed target
+            let rgb_gamma = target_eotf.convert_vec(res.rgb, true);
+            let rgb_gamma = normalize_float_rgb_components(rgb_gamma);
+            let rgb = (rgb_gamma * 255.0).round().to_array().map(|c| c as u8);
 
-        let results_points = results
-            .iter()
-            .map(|res| Points::new([res.xyy[0] as f64, res.xyy[1] as f64]));
+            (
+                coords,
+                Color32::from_rgb(rgb[0], rgb[1], rgb[2]).gamma_multiply(0.75),
+            )
+        });
+
+        let target_rgb_to_xyy =
+            kolor_64::ColorConversion::new(target_csp, kolor_64::spaces::CIE_XYZ.to_cie_xyY());
         let results_targets = results
             .iter()
-            .map(|res| create_polygon_for_target_rgb(target_rgb_to_xyy, res.target.ref_rgb));
+            .map(|res| create_target_box_for_result(res, target_eotf, target_rgb_to_xyy));
 
         let target_box_colour = if dark_mode {
             Color32::GRAY
@@ -129,18 +134,21 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
                     let poly = xy_target
                         .stroke(Stroke::new(2.0, target_box_colour))
                         .fill_color(Color32::TRANSPARENT);
-                    let center_dot = Points::new(center)
-                        .radius(5.0)
+                    let center_cross = Points::new(center)
+                        .radius(12.0)
                         .color(Color32::BLACK)
                         .shape(MarkerShape::Cross);
 
                     plot_ui.polygon(poly);
-                    plot_ui.points(center_dot);
+                    plot_ui.points(center_cross);
                 }
 
-                for res_point in results_points {
-                    let point = res_point.radius(2.0).color(Color32::RED);
-                    plot_ui.points(point);
+                for (res_coords, measured_colour) in results_points {
+                    let point_out = Points::new(res_coords).radius(8.0).color(Color32::GRAY);
+                    let point_in = Points::new(res_coords).radius(5.0).color(measured_colour);
+
+                    plot_ui.points(point_out);
+                    plot_ui.points(point_in);
                 }
             });
     } else {
@@ -175,35 +183,33 @@ pub fn compute_cie_chromaticity_diagram_worker(app_tx: Sender<PGenAppUpdate>) {
     });
 }
 
-fn compute_cie_xy_diagram_image(points: &[[f32; 2]]) -> ColorImage {
+fn compute_cie_xy_diagram_image(points: &[[f64; 2]]) -> ColorImage {
     let resolution = 4096;
 
     let x_points = Array::linspace(0.0, 1.0, resolution);
     let y_points = Array::linspace(1.0, 0.0, resolution);
     let grid_points = Array::from_iter(y_points.iter().cartesian_product(x_points.iter()));
 
-    let xyz_conv = kolor::ColorConversion::new(CIE_XYZ, kolor::spaces::BT_709);
+    let xyz_conv = kolor_64::ColorConversion::new(CIE_XYZ, kolor_64::spaces::BT_709);
     let wp = WhitePoint::D65;
 
     let pixels: Vec<Color32> = grid_points
         .par_iter()
         .copied()
         .map(|(y, x)| {
-            if !point_in_or_on_convex_polygon(points, *x, *y) {
+            let x = *x;
+            let y = *y;
+
+            if !point_in_or_on_convex_polygon(points, x, y) {
                 return Color32::TRANSPARENT;
             }
 
-            let xyy = [*x, *y, 1.0].into();
+            let xyy = [x, y, 1.0].into();
             let xyz = xyY_to_XYZ(xyy, wp);
 
-            let rgb = xyz_conv.convert(xyz);
-            let mut rgb = rgb.to_array();
-            let max = rgb.into_iter().max_by(|a, b| a.total_cmp(b));
-            if max.is_some_and(|e| e > 0.0) {
-                let max = max.unwrap();
-                rgb = rgb.map(|c| (c * (1.0 / max)).clamp(0.0, 1.0));
-            }
-            let rgb = rgb.map(gamma_u8_from_linear_f32);
+            let rgb = normalize_float_rgb_components(xyz_conv.convert(xyz))
+                .to_array()
+                .map(|c| gamma_u8_from_linear_f32(c as f32));
 
             Color32::from_rgb(rgb[0], rgb[1], rgb[2])
         })
@@ -215,7 +221,7 @@ fn compute_cie_xy_diagram_image(points: &[[f32; 2]]) -> ColorImage {
     }
 }
 
-fn point_in_or_on_convex_polygon(points: &[[f32; 2]], x: f32, y: f32) -> bool {
+fn point_in_or_on_convex_polygon(points: &[[f64; 2]], x: f64, y: f64) -> bool {
     let mut i = 0;
     let mut j = points.len() - 1;
     let mut result = false;
@@ -244,11 +250,14 @@ fn point_in_or_on_convex_polygon(points: &[[f32; 2]], x: f32, y: f32) -> bool {
 }
 
 const TARGET_BOX_LENGTH: f64 = 0.0075;
-fn create_polygon_for_target_rgb(conv: ColorConversion, mut dst: [f32; 3]) -> ([f64; 2], Polygon) {
-    conv.convert_float(&mut dst);
-
-    let x = dst[0] as f64;
-    let y = dst[1] as f64;
+fn create_target_box_for_result(
+    res: &ReadingResult,
+    eotf: LuminanceEotf,
+    conv: ColorConversion,
+) -> ([f64; 2], Polygon) {
+    let xyy = conv.convert(eotf.convert_vec(res.target.ref_rgb, false));
+    let x = xyy[0];
+    let y = xyy[1];
 
     let poly = Polygon::new(vec![
         [x + TARGET_BOX_LENGTH, y - TARGET_BOX_LENGTH],

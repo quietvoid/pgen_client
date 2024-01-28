@@ -8,11 +8,15 @@ impl eframe::App for PGenApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let close_requested = ctx.input(|i| {
+            i.viewport().close_requested() || i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)
+        });
+
         if ctx.input(|i| i.viewport().close_requested()) && !self.allowed_to_close {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
 
-        if ctx.input(|i| i.key_pressed(Key::Q) || i.key_pressed(Key::Escape)) {
+        if close_requested {
             self.close();
         }
 

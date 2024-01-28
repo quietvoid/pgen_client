@@ -102,8 +102,17 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
 }
 
 fn rgb_diff_result_point(res: &ReadingResult, cmp: usize) -> [f64; 2] {
-    let ref_cmp = res.target.ref_rgb[cmp] as f64;
-    let x = (ref_cmp * 1000.0).round() / 1000.0;
-    let measured_cmp = res.rgb[cmp] as f64;
+    let ref_cmp = res.target.ref_rgb[cmp];
+    let x = (ref_cmp * 1e3).round() / 1e3;
+
+    // Gamma normalized, scaled by current peak component
+    let actual_cmp = res.rgb[cmp];
+    let sample_y = res.xyy[2];
+    let measured_cmp = if sample_y > 0.0 {
+        actual_cmp / sample_y
+    } else {
+        actual_cmp
+    };
+
     [x, measured_cmp - 1.0]
 }

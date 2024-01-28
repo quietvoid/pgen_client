@@ -90,7 +90,7 @@ impl TestPatternPosition {
 }
 
 impl TestPatternSize {
-    pub const fn float(&self) -> f32 {
+    pub const fn float(&self) -> f64 {
         match self {
             Self::Percent1 => 0.01,
             Self::Percent2 => 0.02,
@@ -104,7 +104,7 @@ impl TestPatternSize {
     }
 
     pub fn patch_size_from_display_resolution(&self, width: u16, height: u16) -> (u16, u16) {
-        let (width, height) = (width as f32, height as f32);
+        let (width, height) = (width as f64, height as f64);
         let area = width * height;
 
         let patch_area = self.float() * area;

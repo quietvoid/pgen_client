@@ -1,5 +1,7 @@
 use std::ops::RangeInclusive;
 
+use kolor_64::Vec3;
+
 use crate::pgen::pattern_config::PGenPatternConfig;
 
 pub type Rgb = [u16; 3];
@@ -125,9 +127,24 @@ pub fn get_rgb_real_range(limited_range: bool, bit_depth: u8) -> (u16, u16) {
     (min, real_max)
 }
 
-pub fn rgb_to_float(rgb: Rgb, limited_range: bool, bit_depth: u8) -> [f32; 3] {
+pub fn rgb_to_float(rgb: Rgb, limited_range: bool, bit_depth: u8) -> Vec3 {
     let (min, real_max) = get_rgb_real_range(limited_range, bit_depth);
-    let real_max = real_max as f32;
+    let real_max = real_max as f64;
 
-    rgb.map(|c| (c - min) as f32 / real_max)
+    rgb.map(|c| (c - min) as f64 / real_max).into()
+}
+
+pub fn round_colour(rgb: Vec3) -> Vec3 {
+    (rgb * 1e6).round() / 1e6
+}
+
+pub fn normalize_float_rgb_components(rgb: Vec3) -> Vec3 {
+    let max = rgb.max_element();
+    if max > 0.0 {
+        let normalized = (rgb * (1.0 / max)).clamp(Vec3::ZERO, Vec3::ONE);
+
+        round_colour(normalized)
+    } else {
+        rgb
+    }
 }

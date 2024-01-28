@@ -29,7 +29,7 @@ eframe = { version = "0.25.0", features = ["persistence"] }
 egui_extras = "0.25.0"
 egui_plot = "0.25.0"
 ecolor = "0.25.0"
-kolor = "0.1.9"
+kolor-64 = "0.1.9"
 
 [profile.release]
 opt-level = 3
