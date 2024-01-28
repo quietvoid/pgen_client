@@ -1774,10 +1774,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
-name = "kolor"
+name = "kolor-64"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be0b28eb1aad615eb53ab25d3ee308204cfd33b738864bed6ffec1d842e9d92e"
+checksum = "4eff28c70ddeac4c0b32ef1a499666bd93f7dca218d974f82d438e31dd61f15d"
 dependencies = [
  "glam",
 ]
@@ -2235,7 +2235,7 @@ dependencies = [
  "egui_plot",
  "futures",
  "itertools",
- "kolor",
+ "kolor-64",
  "log",
  "ndarray",
  "pretty_env_logger",

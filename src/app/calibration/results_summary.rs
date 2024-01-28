@@ -12,7 +12,7 @@ pub fn draw_results_summary_ui(
 ) {
     let minmax = results
         .iter()
-        .map(|res| res.xyy[2] as f64)
+        .map(|res| res.xyy[2])
         .minmax_by(|a, b| a.total_cmp(b))
         .into_option();
 

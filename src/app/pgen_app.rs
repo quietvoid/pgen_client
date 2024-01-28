@@ -16,7 +16,7 @@ use crate::pgen::{
     BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
 };
 use crate::utils::{
-    compute_rgb_range, rgb_10b_to_8b, rgb_to_float, scale_8b_rgb_to_10b,
+    compute_rgb_range, rgb_10b_to_8b, rgb_to_float, round_colour, scale_8b_rgb_to_10b,
     scale_pattern_config_rgb_values,
 };
 
@@ -963,6 +963,7 @@ impl PGenApp {
                 config.limited_range,
                 config.bit_depth as u8,
             );
+            let ref_rgb = round_colour(ref_rgb);
 
             let target = ReadingTarget {
                 ref_rgb,

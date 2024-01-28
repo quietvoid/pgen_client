@@ -249,7 +249,7 @@ impl PGenClient {
         // Only RGB supports 10 bit backgrounds, 8 bit otherwise
         if test_pattern.bit_depth == 10 && !matches!(test_pattern.format, ColorFormat::Rgb) {
             bg_rgb.iter_mut().for_each(|c| {
-                let cf = *c as f32 / 2.0_f32.powf(2.0);
+                let cf = *c as f64 / 2.0_f64.powf(2.0);
                 *c = cf.round() as u16;
             });
         }

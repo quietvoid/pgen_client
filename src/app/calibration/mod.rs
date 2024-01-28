@@ -99,61 +99,6 @@ pub(crate) fn handle_spotread_result(app: &mut PGenApp, result: Option<ReadingRe
     }
 }
 
-impl LuminanceEotf {
-    const GAMMA_2_2: f64 = 2.2;
-    const GAMMA_2_2_INV: f64 = 1.0 / Self::GAMMA_2_2;
-    const GAMMA_2_4: f64 = 2.4;
-    const GAMMA_2_4_INV: f64 = 1.0 / Self::GAMMA_2_4;
-
-    pub fn value(&self, v: f64, oetf: bool) -> f64 {
-        if oetf {
-            self.oetf(v)
-        } else {
-            self.eotf(v)
-        }
-    }
-
-    pub fn eotf(&self, v: f64) -> f64 {
-        match self {
-            LuminanceEotf::Gamma22 => v.powf(Self::GAMMA_2_2),
-            LuminanceEotf::Gamma24 => v.powf(Self::GAMMA_2_4),
-            LuminanceEotf::PQ => Self::pq_to_linear(v),
-        }
-    }
-
-    pub fn oetf(&self, v: f64) -> f64 {
-        match self {
-            LuminanceEotf::Gamma22 => v.powf(Self::GAMMA_2_2_INV),
-            LuminanceEotf::Gamma24 => v.powf(Self::GAMMA_2_4_INV),
-            LuminanceEotf::PQ => Self::linear_to_pq(v),
-        }
-    }
-
-    const ST2084_M1: f64 = 2610.0 / 16384.0;
-    const ST2084_M2: f64 = (2523.0 / 4096.0) * 128.0;
-    const ST2084_C1: f64 = 3424.0 / 4096.0;
-    const ST2084_C2: f64 = (2413.0 / 4096.0) * 32.0;
-    const ST2084_C3: f64 = (2392.0 / 4096.0) * 32.0;
-    fn pq_to_linear(x: f64) -> f64 {
-        if x > 0.0 {
-            let xpow = x.powf(1.0 / Self::ST2084_M2);
-            let num = (xpow - Self::ST2084_C1).max(0.0);
-            let den = (Self::ST2084_C2 - Self::ST2084_C3 * xpow).max(f64::NEG_INFINITY);
-
-            (num / den).powf(1.0 / Self::ST2084_M1)
-        } else {
-            0.0
-        }
-    }
-
-    fn linear_to_pq(v: f64) -> f64 {
-        let num = Self::ST2084_C1 + Self::ST2084_C2 * v.powf(Self::ST2084_M1);
-        let denom = 1.0 + Self::ST2084_C3 * v.powf(Self::ST2084_M1);
-
-        (num / denom).powf(Self::ST2084_M2)
-    }
-}
-
 impl CalibrationState {
     pub fn initial_setup(&mut self) {
         self.spotread_started = false;
@@ -171,7 +116,7 @@ impl Default for CalibrationState {
     fn default() -> Self {
         Self {
             spotread_started: false,
-            spotread_cli_args: vec![("-y".to_owned(), "-l".to_owned())],
+            spotread_cli_args: vec![("-y".to_owned(), "l".to_owned())],
             spotread_tmp_args: Default::default(),
             target_csp: Default::default(),
             eotf: LuminanceEotf::Gamma22,

@@ -47,7 +47,7 @@ pub enum PatchListPreset {
 impl InternalGenerator {
     pub fn load_preset(&mut self, config: &PGenPatternConfig) {
         let (min, real_max) = get_rgb_real_range(config.limited_range, config.bit_depth as u8);
-        let (min, real_max) = (min as f32, real_max as f32);
+        let (min, real_max) = (min as f64, real_max as f64);
 
         self.list.clear();
 
@@ -76,7 +76,7 @@ impl InternalGenerator {
 }
 
 impl PatchListPreset {
-    pub fn rgb_float_list(&self) -> Vec<[f32; 3]> {
+    pub fn rgb_float_list(&self) -> Vec<[f64; 3]> {
         match self {
             Self::Primaries => RGB_PRIMARIES.to_vec(),
             Self::Secondaries => RGB_SECONDARIES.to_vec(),
@@ -92,7 +92,7 @@ impl PatchListPreset {
                 let start = 0.1;
                 let step = 0.5;
                 let rest = (0..19).map(|i| {
-                    let v = ((i as f32 / 10.0) * step) + start;
+                    let v = ((i as f64 / 10.0) * step) + start;
                     let v = (v * 100.0).round() / 100.0;
 
                     [v, v, v]
@@ -106,13 +106,13 @@ impl PatchListPreset {
 
                 let points = 4;
                 let step = 1.0 / points as f32;
-                RGB_SECONDARIES.into_iter().for_each(|e| {
-                    let (h, _, v) = ecolor::hsv_from_rgb(e);
+                RGB_SECONDARIES.into_iter().for_each(|cmp| {
+                    let (h, _, v) = ecolor::hsv_from_rgb(cmp.map(|c| c as f32));
 
                     // In order of less sat to full sat
                     let sweep = (1..=points).map(|i| {
                         let new_sat = i as f32 * step;
-                        ecolor::rgb_from_hsv((h, new_sat, v))
+                        ecolor::rgb_from_hsv((h, new_sat, v)).map(|e| e as f64)
                     });
                     list.extend(sweep);
                 });

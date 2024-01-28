@@ -68,15 +68,15 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], eotf: LuminanceEotf, oetf: 
 
     let measured_peak = results
         .iter()
-        .map(|res| res.xyy[2] as f64)
+        .map(|res| res.xyy[2])
         .max_by(|a, b| a.total_cmp(b));
 
     let lum_points: Vec<[f64; 2]> = if let Some(max_y) = measured_peak {
         results
             .iter()
             .map(|res| {
-                let x = res.target.ref_rgb[0] as f64;
-                let y = res.xyy[2] as f64 / max_y;
+                let x = res.target.ref_rgb[0];
+                let y = res.xyy[2] / max_y;
                 let y = if oetf { eotf.oetf(eotf.oetf(y)) } else { y };
                 [x, y]
             })
