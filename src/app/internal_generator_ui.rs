@@ -1,21 +1,26 @@
 use eframe::{
-    egui::{self, Context, Sense, TextEdit, Ui},
+    egui::{self, Context, Layout, RichText, Sense, TextEdit, Ui},
     epaint::{vec2, Color32, Stroke, Vec2},
 };
 use egui_extras::{Column, TableBuilder};
+use kolor_64::{
+    details::{color::WhitePoint, transform::XYZ_to_xyY},
+    ColorConversion,
+};
 use strum::IntoEnumIterator;
 
 use crate::{
-    calibration::TargetColorspace, external::ExternalJobCmd, generators::internal::PatchListPreset,
+    calibration::{xyz_to_cct, TargetColorspace},
+    external::ExternalJobCmd,
+    generators::internal::PatchListPreset,
     utils::rgb_10b_to_8b,
 };
 
-use super::{status_color_active, PGenApp};
+use super::{status_color_active, CalibrationState, PGenApp};
 
 const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];
 
 pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
-    let pgen_connected = app.state.connected_state.connected;
     let cal_started = app.cal_state.internal_gen.started;
 
     ui.add_space(10.0);
@@ -84,41 +89,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                 });
             });
 
-            ui.vertical(|ui| {
-                let can_read_patches = {
-                    let internal_gen = &app.cal_state.internal_gen;
-
-                    pgen_connected
-                        && app.cal_state.spotread_started
-                        && !app.processing
-                        && !cal_started
-                        && !internal_gen.list.is_empty()
-                };
-                ui.add_enabled_ui(can_read_patches, |ui| {
-                    if ui.button("Measure patches").clicked() {
-                        {
-                            let internal_gen = &mut app.cal_state.internal_gen;
-                            internal_gen.started = true;
-                            internal_gen.auto_advance = true;
-                            internal_gen.selected_idx = Some(0);
-                        }
-
-                        app.calibration_send_measure_selected_patch();
-                    }
-
-                    let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
-                    if has_selected_patch {
-                        ui.add_space(5.0);
-                        if ui.button("Measure selected patch").clicked() {
-                            let internal_gen = &mut app.cal_state.internal_gen;
-                            internal_gen.started = true;
-                            internal_gen.auto_advance = false;
-
-                            app.calibration_send_measure_selected_patch();
-                        }
-                    }
-                });
-            })
+            add_patches_info_right_side(app, ui);
         });
     });
 }
@@ -293,4 +264,157 @@ fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui, avail_height: f32) {
                 }
             })
         });
+}
+
+fn add_patches_info_right_side(app: &mut PGenApp, ui: &mut Ui) {
+    let pgen_connected = app.state.connected_state.connected;
+    let cal_started = app.cal_state.internal_gen.started;
+
+    ui.vertical(|ui| {
+        let can_read_patches = {
+            let internal_gen = &app.cal_state.internal_gen;
+
+            pgen_connected
+                && app.cal_state.spotread_started
+                && !app.processing
+                && !cal_started
+                && !internal_gen.list.is_empty()
+        };
+
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(can_read_patches, |ui| {
+                if ui.button("Measure patches").clicked() {
+                    {
+                        let internal_gen = &mut app.cal_state.internal_gen;
+                        internal_gen.started = true;
+                        internal_gen.auto_advance = true;
+                        internal_gen.selected_idx = Some(0);
+                    }
+
+                    app.calibration_send_measure_selected_patch();
+                }
+
+                let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
+                if has_selected_patch {
+                    ui.add_space(5.0);
+                    if ui.button("Measure selected patch").clicked() {
+                        let internal_gen = &mut app.cal_state.internal_gen;
+                        internal_gen.started = true;
+                        internal_gen.auto_advance = false;
+
+                        app.calibration_send_measure_selected_patch();
+                    }
+                }
+            });
+        });
+
+        let has_selected_patch_result = app
+            .cal_state
+            .internal_gen
+            .selected_patch()
+            .and_then(|e| e.result)
+            .is_some();
+        if has_selected_patch_result {
+            ui.separator();
+            add_selected_patch_results(ui, &mut app.cal_state);
+        }
+    });
+}
+
+const XYY_RESULT_HEADERS: &[&str] = &["", "Target", "Actual", "Deviation"];
+const XYY_RESULT_GRID: [(usize, &str); 3] = [(2, "Y"), (0, "x"), (1, "y")];
+fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
+    let res = cal_state
+        .internal_gen
+        .selected_patch()
+        .and_then(|e| e.result.as_ref())
+        .unwrap();
+
+    let minmax_y = cal_state.internal_gen.minmax_y();
+
+    let target_rgb_to_xyz =
+        ColorConversion::new(cal_state.target_csp.to_kolor(), kolor_64::spaces::CIE_XYZ);
+    let target_xyz = res.ref_xyz(minmax_y, target_rgb_to_xyz, cal_state.eotf);
+
+    let target_xyy = XYZ_to_xyY(target_xyz, WhitePoint::D65);
+    let target_cct = xyz_to_cct(target_xyz).unwrap_or_default();
+
+    let actual_xyy = res.xyy;
+    let xyy_dev = actual_xyy - target_xyy;
+
+    let label_size = 20.0;
+    let text_size = label_size - 2.0;
+    let value_col = Column::auto().at_least(80.0);
+    TableBuilder::new(ui)
+        .striped(true)
+        .column(Column::auto().at_least(20.0))
+        .column(value_col)
+        .column(value_col)
+        .column(value_col)
+        .cell_layout(
+            Layout::centered_and_justified(egui::Direction::LeftToRight)
+                .with_cross_align(egui::Align::Max),
+        )
+        .header(20.0, |mut header| {
+            for label in XYY_RESULT_HEADERS.iter().copied() {
+                header.col(|ui| {
+                    ui.label(label);
+                });
+            }
+        })
+        .body(|mut body| {
+            for (cmp, label) in XYY_RESULT_GRID {
+                body.row(25.0, |mut row| {
+                    let target_cmp = target_xyy[cmp];
+                    let actual_cmp = actual_xyy[cmp];
+
+                    let cmp_dev = xyy_dev[cmp];
+                    let cmp_dev_str = if cal_state.show_deviation_percent {
+                        let cmp_dev_pct = (cmp_dev / target_cmp.abs()) * 100.0;
+                        format!("{cmp_dev_pct:.4} %")
+                    } else {
+                        format!("{cmp_dev:.4}")
+                    };
+
+                    row.col(|ui| {
+                        ui.strong(RichText::new(label).size(label_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(format!("{target_cmp:.4}")).size(text_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(format!("{actual_cmp:.4}")).size(text_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(cmp_dev_str).size(text_size));
+                    });
+                });
+            }
+
+            let actual_cct = res.cct;
+            let cct_dev = actual_cct - target_cct;
+            let cct_dev_str = if cal_state.show_deviation_percent {
+                let cct_dev_pct = (cct_dev / target_cct.abs()) * 100.0;
+                format!("{cct_dev_pct:.4} %")
+            } else {
+                format!("{cct_dev:.4}")
+            };
+            body.row(25.0, |mut row| {
+                row.col(|ui| {
+                    ui.strong(RichText::new("CCT").size(label_size));
+                });
+                row.col(|ui| {
+                    ui.strong(RichText::new(format!("{target_cct:.4}")).size(text_size));
+                });
+                row.col(|ui| {
+                    ui.strong(RichText::new(format!("{actual_cct:.4}")).size(text_size));
+                });
+                row.col(|ui| {
+                    ui.strong(RichText::new(cct_dev_str).size(text_size));
+                });
+            });
+        });
+
+    ui.add_space(15.0);
+    ui.checkbox(&mut cal_state.show_deviation_percent, "Deviation %");
 }

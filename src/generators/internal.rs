@@ -1,10 +1,10 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
 use crate::{
-    calibration::{RGB_PRIMARIES, RGB_SECONDARIES},
+    calibration::{ReadingResult, RGB_PRIMARIES, RGB_SECONDARIES},
     pgen::pattern_config::PGenPatternConfig,
-    spotread::ReadingResult,
     utils::{get_rgb_real_range, Rgb},
 };
 
@@ -72,6 +72,14 @@ impl InternalGenerator {
 
     pub fn results(&self) -> Vec<ReadingResult> {
         self.list.iter().filter_map(|e| e.result).collect()
+    }
+
+    pub fn minmax_y(&self) -> Option<(f64, f64)> {
+        self.list
+            .iter()
+            .filter_map(|pattern| pattern.result.as_ref().map(|e| e.xyy[2]))
+            .minmax_by(|a, b| a.total_cmp(b))
+            .into_option()
     }
 }
 

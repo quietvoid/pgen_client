@@ -6,9 +6,7 @@ use eframe::{
 use egui_plot::{Line, MarkerShape, Plot, Points};
 use strum::IntoEnumIterator;
 
-use crate::spotread::ReadingResult;
-
-use super::{CalibrationState, LuminanceEotf};
+use super::{CalibrationState, LuminanceEotf, ReadingResult};
 
 pub fn draw_luminance_plot(
     ui: &mut Ui,
@@ -39,7 +37,7 @@ pub fn draw_luminance_plot(
     }
 }
 
-fn draw_plot(ui: &mut Ui, results: &[ReadingResult], eotf: LuminanceEotf, oetf: bool) {
+fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf, oetf: bool) {
     let dark_mode = ui.ctx().style().visuals.dark_mode;
     let ref_color = if dark_mode {
         Color32::GRAY
@@ -52,32 +50,33 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], eotf: LuminanceEotf, oetf: 
         Color32::from_rgb(255, 153, 0)
     };
 
+    let minmax_y = ReadingResult::results_minmax_y(results);
+    let min_norm = minmax_y
+        .and_then(|(min, max)| if max > 0.0 { Some(min / max) } else { None })
+        .unwrap_or_default();
+
     let precision: u32 = 10;
     let max = 2_u32.pow(precision);
     let max_f = max as f64;
     let ref_points: Vec<[f64; 2]> = (0..max)
         .map(|i| {
             let x = i as f64 / max_f;
-            [x, eotf.value(x, oetf)]
+            [x, target_eotf.value_bpc(min_norm, x, oetf, false)]
         })
         .collect();
+
     let ref_line = Line::new(ref_points)
         .color(ref_color)
         .highlight(true)
         .style(egui_plot::LineStyle::Dashed { length: 10.0 });
 
-    let measured_peak = results
-        .iter()
-        .map(|res| res.xyy[2])
-        .max_by(|a, b| a.total_cmp(b));
-
-    let lum_points: Vec<[f64; 2]> = if let Some(max_y) = measured_peak {
+    let lum_points: Vec<[f64; 2]> = if let Some((min_y, max_y)) = minmax_y {
         results
             .iter()
             .map(|res| {
                 let x = res.target.ref_rgb[0];
-                let y = res.xyy[2] / max_y;
-                let y = if oetf { eotf.oetf(eotf.oetf(y)) } else { y };
+                let y = res.luminance(min_y, max_y, target_eotf, oetf);
+
                 [x, y]
             })
             .collect()

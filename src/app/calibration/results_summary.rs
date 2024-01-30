@@ -1,7 +1,7 @@
 use eframe::egui::{self, Ui};
 use itertools::Itertools;
 
-use crate::spotread::ReadingResult;
+use crate::calibration::ReadingResult;
 
 use super::CalibrationState;
 

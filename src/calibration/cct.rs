@@ -119,7 +119,7 @@ pub fn xyz_to_cct(xyz: Vec3) -> Option<f64> {
     let mut p = dm / (dm - di);
     p = 1.0 / (lerp(RECIPROCAL_TEMP[i - 1], RECIPROCAL_TEMP[i], p));
 
-    Some((p * 1e6).round() / 1e6)
+    Some(p)
 }
 
 #[cfg(test)]
@@ -135,6 +135,6 @@ mod tests {
     fn xyz_d65_to_cct() {
         let xyz = xyY_to_XYZ(Vec3::new(0.3127, 0.329, 1.0), WhitePoint::D65);
         let cct = xyz_to_cct(xyz).unwrap();
-        assert_eq!(cct, 6503.707185);
+        assert_eq!(cct, 6503.707184795284);
     }
 }

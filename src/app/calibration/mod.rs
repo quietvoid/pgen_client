@@ -14,9 +14,8 @@ use luminance_plot::draw_luminance_plot;
 use rgb_balance_plot::draw_rgb_balance_plot;
 
 use crate::{
-    calibration::{LuminanceEotf, TargetColorspace},
+    calibration::{LuminanceEotf, ReadingResult, TargetColorspace},
     generators::internal::InternalGenerator,
-    spotread::ReadingResult,
 };
 
 pub use cie_diagram_plot::compute_cie_chromaticity_diagram_worker;
@@ -44,6 +43,7 @@ pub struct CalibrationState {
     pub show_rgb_balance_plot: bool,
     pub show_luminance_plot: bool,
     pub show_cie_diagram: bool,
+    pub show_deviation_percent: bool,
 }
 
 pub(crate) fn add_calibration_ui(app: &mut PGenApp, ui: &mut Ui) {
@@ -126,6 +126,7 @@ impl Default for CalibrationState {
             show_rgb_balance_plot: true,
             show_luminance_plot: true,
             show_cie_diagram: true,
+            show_deviation_percent: false,
         }
     }
 }

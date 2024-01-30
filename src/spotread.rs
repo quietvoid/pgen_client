@@ -2,11 +2,6 @@ use std::{iter::once, process::Stdio, time::Duration};
 
 use anyhow::{anyhow, bail, Result};
 use futures::{FutureExt, StreamExt};
-use itertools::Itertools;
-use kolor_64::{
-    details::{color::WhitePoint, transform},
-    ColorConversion, Vec3,
-};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, Lines},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
@@ -16,10 +11,9 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     app::PGenAppUpdate,
-    calibration::ReadingTarget,
+    calibration::{ReadingResult, ReadingTarget},
     external::ExternalJobCmd,
     pgen::{controller::PGenControllerHandle, pattern_config::PGenPatternConfig},
-    utils::round_colour,
 };
 
 struct SpotreadProc {
@@ -37,18 +31,6 @@ struct SpotreadProc {
 pub enum SpotreadCmd {
     DoReading((PGenPatternConfig, ReadingTarget)),
     Exit,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ReadingResult {
-    pub target: ReadingTarget,
-    pub xyz: Vec3,
-    pub lab: Vec3,
-
-    // Calculated
-    pub xyy: Vec3,
-    // OETF applied
-    pub rgb: Vec3,
 }
 
 pub fn start_spotread_worker(
@@ -286,103 +268,5 @@ impl SpotreadProc {
         } else {
             bail!("process exited with status {status}");
         }
-    }
-}
-
-impl ReadingResult {
-    pub fn new(target: ReadingTarget, line: &str) -> Result<Self> {
-        let mut split = line.split(", ");
-        log::trace!("{line}");
-
-        let xyz_str = split
-            .next()
-            .and_then(|e| e.strip_prefix("Result is XYZ: "))
-            .ok_or_else(|| anyhow!("expected both XYZ and Lab results"))?;
-        let lab_str = split
-            .next()
-            .and_then(|e| e.strip_prefix("D50 Lab: "))
-            .ok_or_else(|| anyhow!("expected Lab results"))?;
-
-        let (x, y, z) = xyz_str
-            .split_whitespace()
-            .filter_map(|e| e.parse::<f64>().ok())
-            .collect_tuple()
-            .ok_or_else(|| anyhow!("expected 3 values for XYZ"))?;
-        let (l, a, b) = lab_str
-            .split_whitespace()
-            .filter_map(|e| e.parse::<f64>().ok())
-            .collect_tuple()
-            .ok_or_else(|| anyhow!("expected 3 values for Lab"))?;
-
-        let xyz = Vec3::new(x, y, z);
-        let lab = Vec3::new(l, a, b);
-
-        // XYZ -> linear RGB, scaled to display peak
-        let dst_csp = target.colorspace.to_kolor();
-        let rgb_conv = ColorConversion::new(kolor_64::spaces::CIE_XYZ, dst_csp);
-        let rgb = round_colour(rgb_conv.convert(xyz));
-
-        let xyy = transform::XYZ_to_xyY(xyz, WhitePoint::D65);
-        let xyy = round_colour(xyy);
-
-        Ok(Self {
-            target,
-            xyz,
-            lab,
-            rgb,
-            xyy,
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use kolor_64::Vec3;
-
-    use super::{ReadingResult, ReadingTarget};
-
-    #[test]
-    fn parse_reading_str() {
-        let line =
-            "Result is XYZ: 1.916894 2.645760 2.925977, D50 Lab: 18.565392 -13.538479 -6.117640";
-        let target = ReadingTarget::default();
-
-        let reading = ReadingResult::new(target, line).unwrap();
-        assert_eq!(reading.xyz, Vec3::new(1.916894, 2.645_76, 2.925977));
-        assert_eq!(reading.lab, Vec3::new(18.565392, -13.538_479, -6.11764));
-    }
-
-    #[test]
-    fn calculate_result_rgb() {
-        let line = "Result is XYZ: 33.956292 19.408215 138.000457, D50 Lab: 51.161418 63.602645 -121.627088";
-
-        let target = ReadingTarget {
-            ref_rgb: Vec3::new(0.25024438, 0.25024438, 1.0),
-            ..Default::default()
-        };
-
-        let reading = ReadingResult::new(target, line).unwrap();
-        assert_eq!(reading.xyz, Vec3::new(33.956292, 19.408215, 138.000457));
-        assert_eq!(reading.lab, Vec3::new(51.161418, 63.602645, -121.627088));
-
-        assert_eq!(reading.rgb, Vec3::new(11.403131, 9.232091, 143.827225));
-    }
-
-    #[test]
-    fn calculate_result_rgb_gray() {
-        let line =
-            "Result is XYZ: 5.509335 5.835576 5.835576, D50 Lab: 28.993788 -1.357676 -7.541553";
-
-        let target = ReadingTarget {
-            ref_rgb: Vec3::new(0.029116, 0.029116, 0.029116),
-            ..Default::default()
-        };
-
-        let reading = ReadingResult::new(target, line).unwrap();
-        assert_eq!(reading.xyz, Vec3::new(5.509335, 5.835576, 5.835576));
-        assert_eq!(reading.lab, Vec3::new(28.993788, -1.357676, -7.541553));
-        assert_eq!(reading.xyy, Vec3::new(0.320674, 0.339663, 5.835576));
-
-        assert_eq!(reading.rgb, Vec3::new(5.973441, 5.850096, 5.285468));
     }
 }

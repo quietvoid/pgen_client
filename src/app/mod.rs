@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::{
+    calibration::ReadingResult,
     external::ExternalJobCmd,
     generators::{GeneratorState, GeneratorType},
     pgen::controller::{PGenControllerCmd, PGenControllerState},
-    spotread::ReadingResult,
 };
 
 mod calibration;

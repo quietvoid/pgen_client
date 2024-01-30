@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
 mod cct;
+mod reading_result;
+
 pub use cct::xyz_to_cct;
+pub use reading_result::ReadingResult;
 
 #[derive(
     Display, AsRefStr, Debug, Default, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, EnumIter,
@@ -72,6 +75,21 @@ impl LuminanceEotf {
         }
     }
 
+    pub fn value_bpc(&self, min: f64, v: f64, oetf: bool, linear_min: bool) -> f64 {
+        let min = if linear_min {
+            min
+        } else {
+            // Decode min to linear
+            self.oetf(min)
+        };
+
+        if oetf {
+            self.oetf_bpc(min, v)
+        } else {
+            self.eotf_bpc(min, v)
+        }
+    }
+
     pub fn convert_vec(&self, v: Vec3, oetf: bool) -> Vec3 {
         if oetf {
             match self {
@@ -96,12 +114,24 @@ impl LuminanceEotf {
         }
     }
 
+    fn eotf_bpc(&self, min: f64, v: f64) -> f64 {
+        let max = 1.0 - min;
+        let v = ((v - min) / max).max(0.0);
+
+        (self.eotf(v) * max) + min
+    }
+
     pub fn oetf(&self, v: f64) -> f64 {
         match self {
             Self::Gamma22 => v.powf(Self::GAMMA_2_2_INV),
             Self::Gamma24 => v.powf(Self::GAMMA_2_4_INV),
             Self::PQ => Self::linear_to_pq(v),
         }
+    }
+
+    fn oetf_bpc(&self, min: f64, v: f64) -> f64 {
+        let max = 1.0 - min;
+        (self.oetf(v) * max) + min
     }
 
     const ST2084_M1: f64 = 2610.0 / 16384.0;

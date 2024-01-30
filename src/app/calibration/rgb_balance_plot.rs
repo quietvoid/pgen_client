@@ -1,7 +1,8 @@
 use eframe::{egui::Ui, epaint::Color32};
 use egui_plot::{Line, MarkerShape, Plot, Points};
+use kolor_64::Vec3;
 
-use crate::spotread::ReadingResult;
+use crate::calibration::ReadingResult;
 
 use super::CalibrationState;
 
@@ -35,11 +36,20 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
         Color32::BLACK
     };
     let ref_line = Line::new(ref_points).color(ref_color);
-
-    let red_points: Vec<[f64; 2]> = results
+    let rgb_points: Vec<(f64, Vec3)> = results
         .iter()
-        .map(|res| rgb_diff_result_point(res, 0))
+        .map(|res| {
+            let ref_cmp = res.target.ref_rgb[0];
+            let x = (ref_cmp * 1e3).round() / 1e3;
+
+            // Both RGB and min_y are already encoded in display gamma
+            let y = res.gamma_normalized_rgb();
+
+            (x, y - 1.0)
+        })
         .collect();
+
+    let red_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[0]]).collect();
     let red_line = Line::new(red_points.clone())
         .color(Color32::RED)
         .highlight(true);
@@ -49,10 +59,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
         .color(RED_MARKER_COLOR)
         .highlight(true);
 
-    let green_points: Vec<[f64; 2]> = results
-        .iter()
-        .map(|res| rgb_diff_result_point(res, 1))
-        .collect();
+    let green_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[1]]).collect();
     let green_line = Line::new(green_points.clone())
         .color(GREEN_LINE_COLOR)
         .highlight(true);
@@ -70,10 +77,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
     } else {
         (Color32::BLUE, BLUE_MARKER_COLOR)
     };
-    let blue_points: Vec<[f64; 2]> = results
-        .iter()
-        .map(|res| rgb_diff_result_point(res, 2))
-        .collect();
+    let blue_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[2]]).collect();
     let blue_line = Line::new(blue_points.clone())
         .color(blue_color)
         .highlight(true);
@@ -99,20 +103,4 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
             plot_ui.line(blue_line);
             plot_ui.points(blue_markers);
         });
-}
-
-fn rgb_diff_result_point(res: &ReadingResult, cmp: usize) -> [f64; 2] {
-    let ref_cmp = res.target.ref_rgb[cmp];
-    let x = (ref_cmp * 1e3).round() / 1e3;
-
-    // Gamma normalized, scaled by current peak component
-    let actual_cmp = res.rgb[cmp];
-    let sample_y = res.xyy[2];
-    let measured_cmp = if sample_y > 0.0 {
-        actual_cmp / sample_y
-    } else {
-        actual_cmp
-    };
-
-    [x, measured_cmp - 1.0]
 }
