@@ -2,6 +2,9 @@ use kolor_64::{ColorSpace, Vec3};
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
+mod cct;
+pub use cct::xyz_to_cct;
+
 #[derive(
     Display, AsRefStr, Debug, Default, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, EnumIter,
 )]

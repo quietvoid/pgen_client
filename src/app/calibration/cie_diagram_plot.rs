@@ -8,9 +8,12 @@ use eframe::{
 use egui_plot::{MarkerShape, Plot, PlotImage, PlotPoint, PlotPoints, Points, Polygon};
 use itertools::Itertools;
 use kolor_64::{
-    details::{color::WhitePoint, transform::xyY_to_XYZ},
+    details::{
+        color::WhitePoint,
+        transform::{xyY_to_XYZ, XYZ_to_xyY},
+    },
     spaces::CIE_XYZ,
-    ColorConversion,
+    Vec3,
 };
 use ndarray::{
     parallel::prelude::{IntoParallelRefIterator, ParallelIterator},
@@ -18,10 +21,7 @@ use ndarray::{
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{
-    app::PGenAppUpdate, calibration::LuminanceEotf, spotread::ReadingResult,
-    utils::normalize_float_rgb_components,
-};
+use crate::{app::PGenAppUpdate, spotread::ReadingResult, utils::normalize_float_rgb_components};
 
 use super::CalibrationState;
 
@@ -107,11 +107,12 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
             )
         });
 
-        let target_rgb_to_xyy =
-            kolor_64::ColorConversion::new(target_csp, kolor_64::spaces::CIE_XYZ.to_cie_xyY());
-        let results_targets = results
-            .iter()
-            .map(|res| create_target_box_for_result(res, target_eotf, target_rgb_to_xyy));
+        let target_rgb_to_xyz =
+            kolor_64::ColorConversion::new(target_csp, kolor_64::spaces::CIE_XYZ);
+        let results_targets = results.iter().map(|res| {
+            let xyz = target_rgb_to_xyz.convert(target_eotf.convert_vec(res.target.ref_rgb, false));
+            create_target_box_for_result(xyz)
+        });
 
         let target_box_colour = if dark_mode {
             Color32::GRAY
@@ -250,12 +251,9 @@ fn point_in_or_on_convex_polygon(points: &[[f64; 2]], x: f64, y: f64) -> bool {
 }
 
 const TARGET_BOX_LENGTH: f64 = 0.0075;
-fn create_target_box_for_result(
-    res: &ReadingResult,
-    eotf: LuminanceEotf,
-    conv: ColorConversion,
-) -> ([f64; 2], Polygon) {
-    let xyy = conv.convert(eotf.convert_vec(res.target.ref_rgb, false));
+fn create_target_box_for_result(xyz: Vec3) -> ([f64; 2], Polygon) {
+    let xyy = XYZ_to_xyY(xyz, WhitePoint::D65);
+
     let x = xyy[0];
     let y = xyy[1];
 
