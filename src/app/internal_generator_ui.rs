@@ -330,7 +330,15 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
         .and_then(|e| e.result.as_ref())
         .unwrap();
 
-    let minmax_y = cal_state.internal_gen.minmax_y();
+    // All RGB values are the same, needs to calculate with BPC
+    let grayscale = {
+        let first = res.target.ref_rgb.x;
+        res.target.ref_rgb.to_array().iter().all(|e| *e == first)
+    };
+
+    let minmax_y = grayscale
+        .then(|| cal_state.internal_gen.minmax_y())
+        .flatten();
 
     let target_rgb_to_xyz =
         ColorConversion::new(cal_state.target_csp.to_kolor(), kolor_64::spaces::CIE_XYZ);

@@ -5,11 +5,13 @@ use eframe::{
 use serde::{Deserialize, Serialize};
 
 mod cie_diagram_plot;
+mod gamma_tracking_plot;
 mod luminance_plot;
 mod results_summary;
 mod rgb_balance_plot;
 
 use cie_diagram_plot::draw_cie_diagram_plot;
+use gamma_tracking_plot::draw_gamma_tracking_plot;
 use luminance_plot::draw_luminance_plot;
 use rgb_balance_plot::draw_rgb_balance_plot;
 
@@ -41,6 +43,7 @@ pub struct CalibrationState {
     pub cie_texture: Option<TextureHandle>,
 
     pub show_rgb_balance_plot: bool,
+    pub show_gamma_plot: bool,
     pub show_luminance_plot: bool,
     pub show_cie_diagram: bool,
     pub show_deviation_percent: bool,
@@ -56,6 +59,9 @@ pub(crate) fn add_calibration_ui(app: &mut PGenApp, ui: &mut Ui) {
         }
 
         draw_rgb_balance_plot(ui, &mut app.cal_state, &results);
+        ui.separator();
+
+        draw_gamma_tracking_plot(ui, &results, &mut app.cal_state);
         ui.separator();
 
         draw_luminance_plot(ui, &results, &mut app.cal_state);
@@ -124,6 +130,7 @@ impl Default for CalibrationState {
             internal_gen: Default::default(),
             cie_texture: Default::default(),
             show_rgb_balance_plot: true,
+            show_gamma_plot: true,
             show_luminance_plot: true,
             show_cie_diagram: true,
             show_deviation_percent: false,
