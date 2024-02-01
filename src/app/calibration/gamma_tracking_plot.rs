@@ -1,7 +1,12 @@
 use std::ops::RangeInclusive;
 
-use eframe::{egui::Ui, epaint::Color32};
+use eframe::{
+    egui::{self, Layout, Ui},
+    emath::Align,
+    epaint::Color32,
+};
 use egui_plot::{Line, MarkerShape, Plot, PlotPoint, Points};
+use strum::IntoEnumIterator;
 
 use super::{CalibrationState, LuminanceEotf, ReadingResult};
 
@@ -13,6 +18,19 @@ pub fn draw_gamma_tracking_plot(
     ui.horizontal(|ui| {
         ui.heading("Gamma");
         ui.checkbox(&mut cal_state.show_gamma_plot, "Show");
+
+        if cal_state.show_gamma_plot {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
+                    .selected_text(cal_state.eotf.as_ref())
+                    .show_ui(ui, |ui| {
+                        ui.set_min_width(115.0);
+                        for eotf in LuminanceEotf::iter() {
+                            ui.selectable_value(&mut cal_state.eotf, eotf, eotf.as_ref());
+                        }
+                    });
+            });
+        }
     });
 
     if cal_state.show_gamma_plot {

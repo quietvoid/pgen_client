@@ -1,10 +1,9 @@
 use eframe::{
-    egui::{self, Layout, Ui},
+    egui::{Layout, Ui},
     emath::Align,
     epaint::Color32,
 };
 use egui_plot::{Line, MarkerShape, Plot, Points};
-use strum::IntoEnumIterator;
 
 use super::{CalibrationState, LuminanceEotf, ReadingResult};
 
@@ -20,14 +19,6 @@ pub fn draw_luminance_plot(
         if cal_state.show_luminance_plot {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.checkbox(&mut cal_state.oetf, "OETF");
-                egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
-                    .selected_text(cal_state.eotf.as_ref())
-                    .show_ui(ui, |ui| {
-                        ui.set_min_width(115.0);
-                        for eotf in LuminanceEotf::iter() {
-                            ui.selectable_value(&mut cal_state.eotf, eotf, eotf.as_ref());
-                        }
-                    });
             });
         }
     });
