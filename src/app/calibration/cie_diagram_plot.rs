@@ -106,8 +106,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
             )
         });
 
-        let target_rgb_to_xyz =
-            kolor_64::ColorConversion::new(target_csp, kolor_64::spaces::CIE_XYZ);
+        let target_rgb_to_xyz = cal_state.target_rgb_to_xyz_conv();
         let results_targets = results
             .iter()
             .map(|res| create_target_box_for_result(res, target_rgb_to_xyz, target_eotf));

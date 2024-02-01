@@ -3,10 +3,7 @@ use eframe::{
     epaint::{vec2, Color32, Stroke, Vec2},
 };
 use egui_extras::{Column, TableBuilder};
-use kolor_64::{
-    details::{color::WhitePoint, transform::XYZ_to_xyY},
-    ColorConversion,
-};
+use kolor_64::details::{color::WhitePoint, transform::XYZ_to_xyY};
 use strum::IntoEnumIterator;
 
 use crate::{
@@ -330,22 +327,15 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
         .and_then(|e| e.result.as_ref())
         .unwrap();
 
-    // All RGB values are the same, needs to calculate with BPC
-    let grayscale = {
-        let first = res.target.ref_rgb.x;
-        res.target.ref_rgb.to_array().iter().all(|e| *e == first)
-    };
+    let target_eotf = cal_state.eotf;
 
-    let minmax_y = grayscale
-        .then(|| cal_state.internal_gen.minmax_y())
-        .flatten();
+    // Only relevant for greyscale, chromaticity doesn't care about Y
+    // It is necessary to apply BPC to target values
+    let minmax_y = cal_state.internal_gen.minmax_y();
 
-    let target_rgb_to_xyz =
-        ColorConversion::new(cal_state.target_csp.to_kolor(), kolor_64::spaces::CIE_XYZ);
-    let target_xyz = res.ref_xyz(minmax_y, target_rgb_to_xyz, cal_state.eotf);
-
+    let target_rgb_to_xyz = cal_state.target_rgb_to_xyz_conv();
+    let target_xyz = res.ref_xyz(minmax_y, target_rgb_to_xyz, target_eotf);
     let target_xyy = XYZ_to_xyY(target_xyz, WhitePoint::D65);
-    let target_cct = xyz_to_cct(target_xyz).unwrap_or_default();
 
     let actual_xyy = res.xyy;
     let xyy_dev = actual_xyy - target_xyy;
@@ -353,16 +343,15 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
     let label_size = 20.0;
     let text_size = label_size - 2.0;
     let value_col = Column::auto().at_least(80.0);
+    let cell_layout = Layout::centered_and_justified(egui::Direction::LeftToRight)
+        .with_cross_align(egui::Align::Max);
     TableBuilder::new(ui)
         .striped(true)
         .column(Column::auto().at_least(20.0))
         .column(value_col)
         .column(value_col)
         .column(value_col)
-        .cell_layout(
-            Layout::centered_and_justified(egui::Direction::LeftToRight)
-                .with_cross_align(egui::Align::Max),
-        )
+        .cell_layout(cell_layout)
         .header(20.0, |mut header| {
             for label in XYY_RESULT_HEADERS.iter().copied() {
                 header.col(|ui| {
@@ -399,26 +388,62 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
                 });
             }
 
-            let actual_cct = res.cct;
-            let cct_dev = actual_cct - target_cct;
-            let cct_dev_str = if cal_state.show_deviation_percent {
-                let cct_dev_pct = (cct_dev / target_cct.abs()) * 100.0;
-                format!("{cct_dev_pct:.4} %")
-            } else {
-                format!("{cct_dev:.4}")
-            };
+            // CCT is only relevant for greyscale readings
+            if minmax_y.is_some() {
+                let target_cct = xyz_to_cct(target_xyz).unwrap_or_default();
+                let actual_cct = res.cct;
+                let cct_dev = actual_cct - target_cct;
+                let cct_dev_str = if cal_state.show_deviation_percent {
+                    let cct_dev_pct = (cct_dev / target_cct.abs()) * 100.0;
+                    format!("{cct_dev_pct:.4} %")
+                } else {
+                    format!("{cct_dev:.4}")
+                };
+
+                body.row(25.0, |mut row| {
+                    row.col(|ui| {
+                        ui.strong(RichText::new("CCT").size(label_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(format!("{target_cct:.4}")).size(text_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(format!("{actual_cct:.4}")).size(text_size));
+                    });
+                    row.col(|ui| {
+                        ui.strong(RichText::new(cct_dev_str).size(text_size));
+                    });
+                });
+            }
+        });
+
+    let actual_de2000 = res.delta_e2000(minmax_y, target_rgb_to_xyz, target_eotf);
+    let actual_gamma_str = if let Some(actual_gamma) = res.gamma(minmax_y, target_eotf) {
+        format!("{actual_gamma:.4}")
+    } else {
+        "N/A".to_string()
+    };
+
+    TableBuilder::new(ui)
+        .striped(true)
+        .column(value_col)
+        .column(value_col)
+        .cell_layout(cell_layout)
+        .header(20.0, |mut header| {
+            header.col(|ui| {
+                ui.label("dE 2000");
+            });
+            header.col(|ui| {
+                ui.label("EOTF");
+            });
+        })
+        .body(|mut body| {
             body.row(25.0, |mut row| {
                 row.col(|ui| {
-                    ui.strong(RichText::new("CCT").size(label_size));
+                    ui.strong(RichText::new(format!("{actual_de2000:.4}")).size(label_size));
                 });
                 row.col(|ui| {
-                    ui.strong(RichText::new(format!("{target_cct:.4}")).size(text_size));
-                });
-                row.col(|ui| {
-                    ui.strong(RichText::new(format!("{actual_cct:.4}")).size(text_size));
-                });
-                row.col(|ui| {
-                    ui.strong(RichText::new(cct_dev_str).size(text_size));
+                    ui.strong(RichText::new(actual_gamma_str).size(label_size));
                 });
             });
         });

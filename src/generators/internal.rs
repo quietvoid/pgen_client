@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
@@ -75,11 +74,7 @@ impl InternalGenerator {
     }
 
     pub fn minmax_y(&self) -> Option<(f64, f64)> {
-        self.list
-            .iter()
-            .filter_map(|pattern| pattern.result.as_ref().map(|e| e.xyy[2]))
-            .minmax_by(|a, b| a.total_cmp(b))
-            .into_option()
+        ReadingResult::results_minmax_y(&self.results())
     }
 }
 

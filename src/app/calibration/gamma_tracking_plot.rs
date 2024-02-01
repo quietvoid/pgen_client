@@ -49,14 +49,12 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf)
 
     let ref_line = Line::new(ref_points).color(ref_color).highlight(true);
 
-    let lum_points: Vec<[f64; 2]> = if let Some((min_y, max_y)) = minmax_y {
+    let lum_points: Vec<[f64; 2]> = if minmax_y.is_some() {
         results
             .iter()
             .map(|res| {
                 let x = res.target.ref_rgb[0];
-
-                let lum = res.luminance(min_y, max_y, target_eotf, false);
-                let y = target_eotf.gamma_around_zero(x, lum);
+                let y = res.gamma_around_zero(minmax_y, target_eotf).unwrap();
 
                 [x, y]
             })

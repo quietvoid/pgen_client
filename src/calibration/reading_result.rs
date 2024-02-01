@@ -1,16 +1,17 @@
 use anyhow::{anyhow, Result};
+use deltae::{DEMethod::DE2000, Delta, DeltaE};
 use itertools::Itertools;
 use kolor_64::{
     details::{
         color::WhitePoint,
-        transform::{self, XYZ_to_xyY},
+        transform::{self, XYZ_to_CIELAB, XYZ_to_xyY},
     },
     ColorConversion, Vec3,
 };
 
 use crate::utils::round_colour;
 
-use super::{xyz_to_cct, LuminanceEotf, ReadingTarget};
+use super::{xyz_to_cct, LuminanceEotf, MyLab, ReadingTarget};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ReadingResult {
@@ -98,6 +99,43 @@ impl ReadingResult {
         }
     }
 
+    pub fn gamma(&self, minmax_y: Option<(f64, f64)>, target_eotf: LuminanceEotf) -> Option<f64> {
+        if let Some((min_y, max_y)) = minmax_y {
+            let ref_stimulus = self.ref_rgb_linear_bpc(minmax_y, target_eotf).x;
+            let lum = self.luminance(min_y, max_y, target_eotf, false);
+            Some(LuminanceEotf::gamma(ref_stimulus, lum))
+        } else {
+            None
+        }
+    }
+
+    pub fn gamma_around_zero(
+        &self,
+        minmax_y: Option<(f64, f64)>,
+        target_eotf: LuminanceEotf,
+    ) -> Option<f64> {
+        self.gamma(minmax_y, target_eotf)
+            .map(|gamma| gamma - target_eotf.mean())
+    }
+
+    // BPC applied to target ref RGB in linear space
+    pub fn ref_rgb_linear_bpc(
+        &self,
+        minmax_y: Option<(f64, f64)>,
+        target_eotf: LuminanceEotf,
+    ) -> Vec3 {
+        let ref_rgb = self.target.ref_rgb;
+
+        if let Some((min_y, max_y)) = minmax_y {
+            let min = target_eotf.oetf(min_y / max_y);
+            let max = 1.0 - min;
+
+            (ref_rgb * max) + min
+        } else {
+            ref_rgb
+        }
+    }
+
     // Encode linear RGB to target EOTF, need to be relative to the target display
     pub fn ref_xyz(
         &self,
@@ -130,12 +168,89 @@ impl ReadingResult {
         XYZ_to_xyY(xyz, WhitePoint::D65)
     }
 
+    pub fn ref_lab(
+        &self,
+        minmax_y: Option<(f64, f64)>,
+        target_rgb_to_xyz: ColorConversion,
+        target_eotf: LuminanceEotf,
+    ) -> Vec3 {
+        let ref_xyz = self.ref_xyz(minmax_y, target_rgb_to_xyz, target_eotf);
+
+        let ref_xyz = if let Some(max_y) = minmax_y.map(|e| e.1) {
+            ref_xyz / max_y
+        } else {
+            ref_xyz
+        };
+
+        XYZ_to_CIELAB(ref_xyz, WhitePoint::D65)
+    }
+
+    pub fn delta_e2000(
+        &self,
+        minmax_y: Option<(f64, f64)>,
+        target_rgb_to_xyz: ColorConversion,
+        target_eotf: LuminanceEotf,
+    ) -> DeltaE {
+        let ref_lab = self.ref_lab(minmax_y, target_rgb_to_xyz, target_eotf);
+
+        MyLab(ref_lab).delta(MyLab(self.lab), DE2000)
+    }
+
+    // All equal and not zero, means we're measuring white with stimulus
+    pub fn is_white_stimulus_reading(&self) -> bool {
+        let ref_red = self.target.ref_rgb.x;
+
+        if ref_red > 0.0 {
+            self.target.ref_rgb.to_array().iter().all(|e| *e == ref_red)
+        } else {
+            false
+        }
+    }
+
     pub fn results_minmax_y(results: &[Self]) -> Option<(f64, f64)> {
-        results
+        if results.iter().any(|e| e.is_white_stimulus_reading()) {
+            results
+                .iter()
+                .map(|res| res.xyy[2])
+                .minmax_by(|a, b| a.total_cmp(b))
+                .into_option()
+        } else {
+            None
+        }
+    }
+
+    pub fn results_average_delta_e2000(
+        results: &[Self],
+        minmax_y: Option<(f64, f64)>,
+        target_rgb_to_xyz: ColorConversion,
+        target_eotf: LuminanceEotf,
+    ) -> f32 {
+        let deltae_2000_sum: f32 = results
             .iter()
-            .map(|res| res.xyy[2])
-            .minmax_by(|a, b| a.total_cmp(b))
-            .into_option()
+            .map(|e| {
+                *e.delta_e2000(minmax_y, target_rgb_to_xyz, target_eotf)
+                    .value()
+            })
+            .sum();
+
+        deltae_2000_sum / results.len() as f32
+    }
+
+    pub fn results_average_gamma(
+        results: &[Self],
+        minmax_y: Option<(f64, f64)>,
+        target_eotf: LuminanceEotf,
+    ) -> Option<f64> {
+        if minmax_y.is_some() {
+            let gamma_sum: f64 = results
+                .iter()
+                .filter_map(|e| e.gamma(minmax_y, target_eotf))
+                .sum();
+
+            Some(gamma_sum / results.len() as f64)
+        } else {
+            None
+        }
     }
 }
 

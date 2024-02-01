@@ -1,3 +1,4 @@
+use deltae::LabValue;
 use kolor_64::{ColorSpace, Vec3};
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
@@ -41,11 +42,19 @@ pub const RGB_SECONDARIES: [[f64; 3]; 6] = [
 ];
 
 impl TargetColorspace {
-    pub fn to_kolor(&self) -> ColorSpace {
+    pub const fn to_kolor(&self) -> ColorSpace {
         match self {
             Self::Rec709 => kolor_64::spaces::BT_709,
             Self::DisplayP3 => kolor_64::spaces::DISPLAY_P3,
             Self::Rec2020 => kolor_64::spaces::BT_2020,
         }
+    }
+}
+
+pub struct MyLab(pub Vec3);
+impl From<MyLab> for LabValue {
+    fn from(lab: MyLab) -> Self {
+        let (l, a, b) = lab.0.to_array().map(|e| e as f32).into();
+        LabValue { l, a, b }
     }
 }

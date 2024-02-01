@@ -50,9 +50,10 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf,
         Color32::from_rgb(255, 153, 0)
     };
 
+    // Can only be present if there are non-zero values
     let minmax_y = ReadingResult::results_minmax_y(results);
     let min_norm = minmax_y
-        .and_then(|(min, max)| if max > 0.0 { Some(min / max) } else { None })
+        .map(|(min_y, max_y)| min_y / max_y)
         .unwrap_or_default();
 
     let precision: u32 = 10;

@@ -2,6 +2,7 @@ use eframe::{
     egui::{Context, ScrollArea, TextureOptions, Ui},
     epaint::{ColorImage, TextureHandle},
 };
+use kolor_64::ColorConversion;
 use serde::{Deserialize, Serialize};
 
 mod cie_diagram_plot;
@@ -115,6 +116,10 @@ impl CalibrationState {
         self.cie_texture.get_or_insert_with(|| {
             ctx.load_texture("cie_xy_diagram_tex", image, TextureOptions::NEAREST)
         });
+    }
+
+    pub fn target_rgb_to_xyz_conv(&self) -> ColorConversion {
+        ColorConversion::new(self.target_csp.to_kolor(), kolor_64::spaces::CIE_XYZ)
     }
 }
 
