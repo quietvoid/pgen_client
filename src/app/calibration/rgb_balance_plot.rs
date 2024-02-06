@@ -38,6 +38,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
     let ref_line = Line::new(ref_points).color(ref_color);
     let rgb_points: Vec<(f64, Vec3)> = results
         .iter()
+        .filter(|res| res.is_white_stimulus_reading() && res.target.ref_rgb.x > 0.01)
         .map(|res| {
             let ref_cmp = res.target.ref_rgb[0];
             let x = (ref_cmp * 1e3).round() / 1e3;

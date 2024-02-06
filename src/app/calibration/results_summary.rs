@@ -10,18 +10,12 @@ pub fn draw_results_summary_ui(
     results: &[ReadingResult],
 ) {
     let target_rgb_to_xyz = cal_state.target_rgb_to_xyz_conv();
-    let target_eotf = cal_state.eotf;
 
-    let minmax_y = ReadingResult::results_minmax_y(results);
-    let avg_delta_e2000 = ReadingResult::results_average_delta_e2000(
-        results,
-        minmax_y,
-        target_rgb_to_xyz,
-        target_eotf,
-    );
-    let avg_gamma_str = if let Some(avg_gamma) =
-        ReadingResult::results_average_gamma(results, minmax_y, target_eotf)
-    {
+    let minmax_y = cal_state.internal_gen.minmax_y();
+    let avg_delta_e2000 = ReadingResult::results_average_delta_e2000(results, target_rgb_to_xyz);
+    let avg_delta_e2000_incl_lum =
+        ReadingResult::results_average_delta_e2000_incl_luminance(results, target_rgb_to_xyz);
+    let avg_gamma_str = if let Some(avg_gamma) = ReadingResult::results_average_gamma(results) {
         format!("{avg_gamma:.4}")
     } else {
         "N/A".to_string()
@@ -40,15 +34,20 @@ pub fn draw_results_summary_ui(
             .show(ui, |ui| {
                 if let Some((min_y, max_y)) = minmax_y {
                     ui.label(format!("Y Min: {min_y:.6} nits"));
+
+                    ui.add_space(5.0);
                     ui.label(format!("Y Max: {max_y:.6} nits"));
                     ui.end_row();
-
-                    ui.label(format!("Average dE2000: {avg_delta_e2000:.4}"));
-                    ui.end_row();
-
-                    ui.label(format!("Average gamma: {avg_gamma_str}"));
-                    ui.end_row();
                 }
+
+                ui.label(format!("Average dE2000: {avg_delta_e2000:.4}"));
+                ui.label(format!(
+                    "Average dE2000 w/ lum: {avg_delta_e2000_incl_lum:.4}"
+                ));
+                ui.end_row();
+
+                ui.label(format!("Average gamma: {avg_gamma_str}"));
+                ui.end_row();
             });
     });
 }

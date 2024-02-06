@@ -13,7 +13,7 @@ use crate::{
     utils::rgb_10b_to_8b,
 };
 
-use super::{status_color_active, CalibrationState, PGenApp};
+use super::{status_color_active, utils::is_dragvalue_finished, CalibrationState, PGenApp};
 
 const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];
 
@@ -34,19 +34,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
     add_spotread_status_ui(app, ctx, ui);
 
     ui.add_space(10.0);
-    ui.horizontal(|ui| {
-        ui.label("Target");
-        ui.add_enabled_ui(!cal_started, |ui| {
-            egui::ComboBox::from_id_source("target_colorspaces")
-                .selected_text(app.cal_state.target_csp.as_ref())
-                .width(150.0)
-                .show_ui(ui, |ui| {
-                    for csp in TargetColorspace::iter() {
-                        ui.selectable_value(&mut app.cal_state.target_csp, csp, csp.as_ref());
-                    }
-                });
-        });
-    });
+    add_target_config_ui(app, ui);
 
     ui.heading("Patch list");
     ui.indent("patch_list_indent", |ui| {
@@ -86,7 +74,9 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                 });
             });
 
-            add_patches_info_right_side(app, ui);
+            ui.vertical(|ui| {
+                add_patches_info_right_side(app, ui);
+            });
         });
     });
 }
@@ -199,6 +189,60 @@ fn add_spotread_status_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
     });
 }
 
+fn add_target_config_ui(app: &mut PGenApp, ui: &mut Ui) {
+    let cal_started = app.cal_state.internal_gen.started;
+
+    ui.horizontal(|ui| {
+        ui.label("Target brightness");
+        ui.add_enabled_ui(!cal_started, |ui| {
+            ui.label("Min");
+            let min_y_res = ui.add(
+                egui::DragValue::new(&mut app.cal_state.min_y)
+                    .update_while_editing(false)
+                    .suffix(" nits")
+                    .max_decimals(6)
+                    .speed(0.0001)
+                    .clamp_range(0.0..=5.0),
+            );
+            if is_dragvalue_finished(min_y_res) {
+                app.cal_state.update_patterns_target();
+            }
+
+            ui.label("Max");
+            let max_y_res = ui.add(
+                egui::DragValue::new(&mut app.cal_state.max_y)
+                    .update_while_editing(false)
+                    .suffix(" nits")
+                    .max_decimals(3)
+                    .speed(0.1)
+                    .clamp_range(25.0..=10000.0),
+            );
+            if is_dragvalue_finished(max_y_res) {
+                app.cal_state.update_patterns_target();
+            }
+        });
+    });
+
+    ui.horizontal(|ui| {
+        ui.label("Target primaries");
+
+        let old_csp = app.cal_state.target_csp;
+        ui.add_enabled_ui(!cal_started, |ui| {
+            egui::ComboBox::from_id_source("target_colorspaces")
+                .selected_text(app.cal_state.target_csp.as_ref())
+                .width(150.0)
+                .show_ui(ui, |ui| {
+                    for csp in TargetColorspace::iter() {
+                        ui.selectable_value(&mut app.cal_state.target_csp, csp, csp.as_ref());
+                    }
+                });
+        });
+        if old_csp != app.cal_state.target_csp {
+            app.cal_state.update_patterns_target();
+        }
+    });
+}
+
 fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui, avail_height: f32) {
     let bit_depth = app.state.pattern_config.bit_depth as u8;
 
@@ -267,55 +311,53 @@ fn add_patches_info_right_side(app: &mut PGenApp, ui: &mut Ui) {
     let pgen_connected = app.state.connected_state.connected;
     let cal_started = app.cal_state.internal_gen.started;
 
-    ui.vertical(|ui| {
-        let can_read_patches = {
-            let internal_gen = &app.cal_state.internal_gen;
+    let can_read_patches = {
+        let internal_gen = &app.cal_state.internal_gen;
 
-            pgen_connected
-                && app.cal_state.spotread_started
-                && !app.processing
-                && !cal_started
-                && !internal_gen.list.is_empty()
-        };
+        pgen_connected
+            && app.cal_state.spotread_started
+            && !app.processing
+            && !cal_started
+            && !internal_gen.list.is_empty()
+    };
 
-        ui.horizontal(|ui| {
-            ui.add_enabled_ui(can_read_patches, |ui| {
-                if ui.button("Measure patches").clicked() {
-                    {
-                        let internal_gen = &mut app.cal_state.internal_gen;
-                        internal_gen.started = true;
-                        internal_gen.auto_advance = true;
-                        internal_gen.selected_idx = Some(0);
-                    }
+    ui.horizontal(|ui| {
+        ui.add_enabled_ui(can_read_patches, |ui| {
+            if ui.button("Measure patches").clicked() {
+                {
+                    let internal_gen = &mut app.cal_state.internal_gen;
+                    internal_gen.started = true;
+                    internal_gen.auto_advance = true;
+                    internal_gen.selected_idx = Some(0);
+                }
+
+                app.calibration_send_measure_selected_patch();
+            }
+
+            let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
+            if has_selected_patch {
+                ui.add_space(5.0);
+                if ui.button("Measure selected patch").clicked() {
+                    let internal_gen = &mut app.cal_state.internal_gen;
+                    internal_gen.started = true;
+                    internal_gen.auto_advance = false;
 
                     app.calibration_send_measure_selected_patch();
                 }
-
-                let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
-                if has_selected_patch {
-                    ui.add_space(5.0);
-                    if ui.button("Measure selected patch").clicked() {
-                        let internal_gen = &mut app.cal_state.internal_gen;
-                        internal_gen.started = true;
-                        internal_gen.auto_advance = false;
-
-                        app.calibration_send_measure_selected_patch();
-                    }
-                }
-            });
+            }
         });
-
-        let has_selected_patch_result = app
-            .cal_state
-            .internal_gen
-            .selected_patch()
-            .and_then(|e| e.result)
-            .is_some();
-        if has_selected_patch_result {
-            ui.separator();
-            add_selected_patch_results(ui, &mut app.cal_state);
-        }
     });
+
+    let has_selected_patch_result = app
+        .cal_state
+        .internal_gen
+        .selected_patch()
+        .and_then(|e| e.result)
+        .is_some();
+    if has_selected_patch_result {
+        ui.separator();
+        add_selected_patch_results(ui, &mut app.cal_state);
+    }
 }
 
 const XYY_RESULT_HEADERS: &[&str] = &["", "Target", "Actual", "Deviation"];
@@ -327,14 +369,8 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
         .and_then(|e| e.result.as_ref())
         .unwrap();
 
-    let target_eotf = cal_state.eotf;
-
-    // Only relevant for greyscale, chromaticity doesn't care about Y
-    // It is necessary to apply BPC to target values
-    let minmax_y = cal_state.internal_gen.minmax_y();
-
     let target_rgb_to_xyz = cal_state.target_rgb_to_xyz_conv();
-    let target_xyz = res.ref_xyz(minmax_y, target_rgb_to_xyz, target_eotf);
+    let target_xyz = res.ref_xyz_display_space(target_rgb_to_xyz, true);
     let target_xyy = XYZ_to_xyY(target_xyz, WhitePoint::D65);
 
     let actual_xyy = res.xyy;
@@ -342,17 +378,18 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
 
     let label_size = 20.0;
     let text_size = label_size - 2.0;
-    let value_col = Column::auto().at_least(80.0);
-    let cell_layout = Layout::centered_and_justified(egui::Direction::LeftToRight)
+    let value_col = Column::auto().at_least(100.0);
+    let cell_layout = Layout::default()
+        .with_main_align(egui::Align::Max)
         .with_cross_align(egui::Align::Max);
     TableBuilder::new(ui)
         .striped(true)
-        .column(Column::auto().at_least(20.0))
-        .column(value_col)
-        .column(value_col)
-        .column(value_col)
         .cell_layout(cell_layout)
-        .header(20.0, |mut header| {
+        .column(Column::auto().at_least(40.0))
+        .column(value_col)
+        .column(value_col)
+        .column(value_col)
+        .header(25.0, |mut header| {
             for label in XYY_RESULT_HEADERS.iter().copied() {
                 header.col(|ui| {
                     ui.label(label);
@@ -389,7 +426,7 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
             }
 
             // CCT is only relevant for greyscale readings
-            if minmax_y.is_some() {
+            if res.is_white_stimulus_reading() {
                 let target_cct = xyz_to_cct(target_xyz).unwrap_or_default();
                 let actual_cct = res.cct;
                 let cct_dev = actual_cct - target_cct;
@@ -417,37 +454,30 @@ fn add_selected_patch_results(ui: &mut Ui, cal_state: &mut CalibrationState) {
             }
         });
 
-    let actual_de2000 = res.delta_e2000(minmax_y, target_rgb_to_xyz, target_eotf);
-    let actual_gamma_str = if let Some(actual_gamma) = res.gamma(minmax_y, target_eotf) {
+    ui.add_space(5.0);
+    ui.checkbox(&mut cal_state.show_deviation_percent, "Deviation %");
+
+    ui.separator();
+
+    let actual_de2000 = res.delta_e2000(target_rgb_to_xyz);
+    let actual_de2000_incl_lum = res.delta_e2000_incl_luminance(target_rgb_to_xyz);
+    let actual_gamma_str = if let Some(actual_gamma) = res.gamma() {
         format!("{actual_gamma:.4}")
     } else {
         "N/A".to_string()
     };
 
-    TableBuilder::new(ui)
-        .striped(true)
-        .column(value_col)
-        .column(value_col)
-        .cell_layout(cell_layout)
-        .header(20.0, |mut header| {
-            header.col(|ui| {
-                ui.label("dE 2000");
-            });
-            header.col(|ui| {
-                ui.label("EOTF");
-            });
-        })
-        .body(|mut body| {
-            body.row(25.0, |mut row| {
-                row.col(|ui| {
-                    ui.strong(RichText::new(format!("{actual_de2000:.4}")).size(label_size));
-                });
-                row.col(|ui| {
-                    ui.strong(RichText::new(actual_gamma_str).size(label_size));
-                });
-            });
-        });
+    egui::Grid::new("selected_patch_delta_grid")
+        .spacing([20.0, 4.0])
+        .show(ui, |ui| {
+            ui.strong(RichText::new("dE 2000").size(label_size));
+            ui.strong(RichText::new("dE 2000 (w/ lum)").size(label_size));
+            ui.strong(RichText::new("EOTF").size(label_size));
+            ui.end_row();
 
-    ui.add_space(15.0);
-    ui.checkbox(&mut cal_state.show_deviation_percent, "Deviation %");
+            ui.strong(RichText::new(format!("{actual_de2000:.4}")).size(label_size));
+            ui.strong(RichText::new(format!("{actual_de2000_incl_lum:.4}")).size(label_size));
+            ui.strong(RichText::new(actual_gamma_str).size(label_size));
+            ui.end_row();
+        });
 }

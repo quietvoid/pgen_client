@@ -34,6 +34,9 @@ pub struct CalibrationState {
 
     pub target_csp: TargetColorspace,
 
+    pub min_y: f64,
+    pub max_y: f64,
+
     // Luminance calibration
     pub eotf: LuminanceEotf,
     pub oetf: bool,
@@ -110,6 +113,11 @@ impl CalibrationState {
     pub fn initial_setup(&mut self) {
         self.spotread_started = false;
         self.internal_gen.started = false;
+
+        self.min_y = self.min_y.clamp(0.0, 1.0);
+        if self.max_y <= 0.0 {
+            self.max_y = 100.0;
+        }
     }
 
     pub fn set_cie_texture(&mut self, ctx: &Context, image: ColorImage) {
@@ -121,6 +129,25 @@ impl CalibrationState {
     pub fn target_rgb_to_xyz_conv(&self) -> ColorConversion {
         ColorConversion::new(self.target_csp.to_kolor(), kolor_64::spaces::CIE_XYZ)
     }
+
+    pub fn update_patterns_target(&mut self) {
+        self.internal_gen
+            .list
+            .iter_mut()
+            .filter_map(|e| e.result.as_mut())
+            .for_each(|res| {
+                res.target.min_y = self.min_y;
+                res.target.max_y = self.max_y;
+                res.target.eotf = self.eotf;
+                res.target.colorspace = self.target_csp;
+
+                res.set_or_update_calculated_values();
+            });
+    }
+
+    pub fn min_normalized(&self) -> f64 {
+        self.min_y / self.max_y
+    }
 }
 
 impl Default for CalibrationState {
@@ -129,9 +156,13 @@ impl Default for CalibrationState {
             spotread_started: false,
             spotread_cli_args: vec![("-y".to_owned(), "l".to_owned())],
             spotread_tmp_args: Default::default(),
+
+            min_y: Default::default(),
+            max_y: 100.0,
             target_csp: Default::default(),
             eotf: LuminanceEotf::Gamma22,
             oetf: true,
+
             internal_gen: Default::default(),
             cie_texture: Default::default(),
             show_rgb_balance_plot: true,

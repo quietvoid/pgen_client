@@ -122,7 +122,7 @@ impl LuminanceEotf {
 
     pub fn gamma(v_in: f64, v_out: f64) -> f64 {
         // Avoid division by zero
-        let gamma = v_out.ln() / (v_in.ln() - 1e-7);
+        let gamma = (v_out.ln() - 1e-7) / (v_in.ln() - 1e-7);
         (gamma * 1e3).round() / 1e3
     }
 

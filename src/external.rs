@@ -4,7 +4,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     app::PGenAppUpdate,
-    calibration::ReadingTarget,
+    calibration::CalibrationTarget,
     generators::{
         start_tcp_generator_client, GeneratorClient, GeneratorClientCmd, GeneratorInterface,
     },
@@ -23,7 +23,7 @@ pub enum ExternalJobCmd {
     // spotread
     StartSpotreadProcess(Vec<(String, String)>),
     StopSpotreadProcess,
-    SpotreadMeasure((PGenPatternConfig, ReadingTarget)),
+    SpotreadMeasure((PGenPatternConfig, CalibrationTarget)),
     SpotreadDoneMeasuring,
 }
 

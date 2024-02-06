@@ -17,6 +17,7 @@ pub mod eframe_app;
 mod external_generator_ui;
 mod internal_generator_ui;
 pub mod pgen_app;
+pub mod utils;
 
 pub use pgen_app::PGenApp;
 

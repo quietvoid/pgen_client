@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::app::calibration::handle_spotread_result;
-use crate::calibration::ReadingTarget;
+use crate::calibration::CalibrationTarget;
 use crate::external::ExternalJobCmd;
 use crate::generators::{GeneratorState, GeneratorType};
 use crate::pgen::commands::{PGenCommand, PGenSetConfCommand};
@@ -24,6 +24,7 @@ use super::calibration::add_calibration_ui;
 use super::external_generator_ui::add_external_generator_ui;
 use super::internal_generator_ui::add_internal_generator_ui;
 use super::status_color_active;
+use super::utils::is_dragvalue_finished;
 pub use super::{calibration::CalibrationState, PGenAppContext, PGenAppSavedState, PGenAppUpdate};
 
 pub struct PGenApp {
@@ -965,9 +966,13 @@ impl PGenApp {
             );
             let ref_rgb = round_colour(ref_rgb);
 
-            let target = ReadingTarget {
-                ref_rgb,
+            let target = CalibrationTarget {
+                min_y: self.cal_state.min_y,
+                max_y: self.cal_state.max_y,
+                eotf: self.cal_state.eotf,
                 colorspace: self.cal_state.target_csp,
+
+                ref_rgb,
             };
 
             self.ctx
@@ -976,10 +981,6 @@ impl PGenApp {
                 .ok();
         }
     }
-}
-
-fn is_dragvalue_finished(res: egui::Response) -> bool {
-    !res.has_focus() && (res.drag_released() || res.lost_focus())
 }
 
 fn restart_pgenerator_sw(ctx: &PGenAppContext) {

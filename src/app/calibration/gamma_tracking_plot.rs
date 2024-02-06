@@ -5,7 +5,7 @@ use eframe::{
     emath::Align,
     epaint::Color32,
 };
-use egui_plot::{Line, MarkerShape, Plot, PlotPoint, Points};
+use egui_plot::{GridMark, Line, MarkerShape, Plot, PlotPoint, Points};
 use strum::IntoEnumIterator;
 
 use super::{CalibrationState, LuminanceEotf, ReadingResult};
@@ -20,6 +20,7 @@ pub fn draw_gamma_tracking_plot(
         ui.checkbox(&mut cal_state.show_gamma_plot, "Show");
 
         if cal_state.show_gamma_plot {
+            let old_eotf = cal_state.eotf;
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
                     .selected_text(cal_state.eotf.as_ref())
@@ -30,15 +31,19 @@ pub fn draw_gamma_tracking_plot(
                         }
                     });
             });
+            if old_eotf != cal_state.eotf {
+                cal_state.update_patterns_target();
+            }
         }
     });
 
     if cal_state.show_gamma_plot {
-        draw_plot(ui, results, cal_state.eotf);
+        let min = cal_state.min_normalized();
+        draw_plot(ui, results, min, cal_state.eotf);
     }
 }
 
-fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf) {
+fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: LuminanceEotf) {
     let dark_mode = ui.ctx().style().visuals.dark_mode;
     let ref_color = if dark_mode {
         Color32::from_rgb(0, 255, 255)
@@ -51,35 +56,35 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf)
         Color32::from_rgb(255, 153, 0)
     };
 
-    let minmax_y = ReadingResult::results_minmax_y(results);
-
     let precision: u32 = 8;
     let max = 2_u32.pow(precision);
     let max_f = max as f64;
     let ref_points: Vec<[f64; 2]> = (0..max)
-        .map(|i| {
+        .filter_map(|i| {
             let x = i as f64 / max_f;
-            let y = target_eotf.gamma_around_zero(x, target_eotf.eotf(x));
+            if x > 0.01 {
+                let v_out = target_eotf.value_bpc(min, x, false, false);
+                let y = target_eotf.gamma_around_zero(x, v_out);
 
-            [x, y]
+                Some([x, y])
+            } else {
+                None
+            }
         })
         .collect();
 
     let ref_line = Line::new(ref_points).color(ref_color).highlight(true);
 
-    let lum_points: Vec<[f64; 2]> = if minmax_y.is_some() {
-        results
-            .iter()
-            .map(|res| {
-                let x = res.target.ref_rgb[0];
-                let y = res.gamma_around_zero(minmax_y, target_eotf).unwrap();
+    let lum_points: Vec<[f64; 2]> = results
+        .iter()
+        .filter(|res| res.is_white_stimulus_reading() && res.not_zero_or_one_rgb())
+        .map(|res| {
+            let x = res.target.ref_rgb[0];
+            let y = res.gamma_around_zero().unwrap();
 
-                [x, y]
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+            [x, y]
+        })
+        .collect();
 
     let lum_line = Line::new(lum_points.clone())
         .color(lum_color)
@@ -91,8 +96,9 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf)
         .highlight(true);
 
     let gamma_mean = target_eotf.mean();
-    let gamma_fmt =
-        move |tick, _max_digits, _range: &RangeInclusive<f64>| format!("{:.3}", tick + gamma_mean);
+    let gamma_fmt = move |mark: GridMark, _max_digits, _range: &RangeInclusive<f64>| {
+        format!("{:.3}", mark.value + gamma_mean)
+    };
     let gamma_label_fmt = move |_s: &str, point: &PlotPoint| {
         format!("x = {:.4}\ny = {:.4}", point.x, point.y + gamma_mean)
     };

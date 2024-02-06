@@ -11,11 +11,15 @@ pub use cct::xyz_to_cct;
 pub use luminance_eotf::LuminanceEotf;
 pub use reading_result::ReadingResult;
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ReadingTarget {
+#[derive(Debug, Clone, Copy)]
+pub struct CalibrationTarget {
+    pub min_y: f64,
+    pub max_y: f64,
+    pub colorspace: TargetColorspace,
+    pub eotf: LuminanceEotf,
+
     // Linear
     pub ref_rgb: Vec3,
-    pub colorspace: TargetColorspace,
 }
 
 #[derive(
@@ -56,5 +60,17 @@ impl From<MyLab> for LabValue {
     fn from(lab: MyLab) -> Self {
         let (l, a, b) = lab.0.to_array().map(|e| e as f32).into();
         LabValue { l, a, b }
+    }
+}
+
+impl Default for CalibrationTarget {
+    fn default() -> Self {
+        Self {
+            min_y: Default::default(),
+            max_y: 100.0,
+            colorspace: Default::default(),
+            eotf: Default::default(),
+            ref_rgb: Default::default(),
+        }
     }
 }

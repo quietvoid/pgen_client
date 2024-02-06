@@ -11,7 +11,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     app::PGenAppUpdate,
-    calibration::{ReadingResult, ReadingTarget},
+    calibration::{CalibrationTarget, ReadingResult},
     external::ExternalJobCmd,
     pgen::{controller::PGenControllerHandle, pattern_config::PGenPatternConfig},
 };
@@ -29,7 +29,7 @@ struct SpotreadProc {
 }
 
 pub enum SpotreadCmd {
-    DoReading((PGenPatternConfig, ReadingTarget)),
+    DoReading((PGenPatternConfig, CalibrationTarget)),
     Exit,
 }
 
@@ -177,7 +177,7 @@ impl SpotreadProc {
         })
     }
 
-    async fn try_measure(&mut self, target: ReadingTarget) -> Result<()> {
+    async fn try_measure(&mut self, target: CalibrationTarget) -> Result<()> {
         if self.can_take_reading {
             self.can_take_reading = false;
 
@@ -201,7 +201,7 @@ impl SpotreadProc {
         if let Some(lines) = self.read_stdout_lines().await? {
             for line in lines {
                 if line.starts_with("Result is XYZ:") {
-                    let reading = ReadingResult::new(target, &line)?;
+                    let reading = ReadingResult::from_spotread_result(target, &line)?;
                     self.app_tx
                         .send(PGenAppUpdate::SpotreadRes(Some(reading)))
                         .await

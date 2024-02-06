@@ -24,11 +24,18 @@ pub fn draw_luminance_plot(
     });
 
     if cal_state.show_luminance_plot {
-        draw_plot(ui, results, cal_state.eotf, cal_state.oetf);
+        let min = cal_state.min_normalized();
+        draw_plot(ui, results, min, cal_state.eotf, cal_state.oetf);
     }
 }
 
-fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf, oetf: bool) {
+fn draw_plot(
+    ui: &mut Ui,
+    results: &[ReadingResult],
+    min: f64,
+    target_eotf: LuminanceEotf,
+    oetf: bool,
+) {
     let dark_mode = ui.ctx().style().visuals.dark_mode;
     let ref_color = if dark_mode {
         Color32::GRAY
@@ -41,19 +48,13 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf,
         Color32::from_rgb(255, 153, 0)
     };
 
-    // Can only be present if there are non-zero values
-    let minmax_y = ReadingResult::results_minmax_y(results);
-    let min_norm = minmax_y
-        .map(|(min_y, max_y)| min_y / max_y)
-        .unwrap_or_default();
-
     let precision: u32 = 10;
     let max = 2_u32.pow(precision);
     let max_f = max as f64;
     let ref_points: Vec<[f64; 2]> = (0..max)
         .map(|i| {
             let x = i as f64 / max_f;
-            [x, target_eotf.value_bpc(min_norm, x, oetf, false)]
+            [x, target_eotf.value_bpc(min, x, oetf, false)]
         })
         .collect();
 
@@ -62,19 +63,16 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], target_eotf: LuminanceEotf,
         .highlight(true)
         .style(egui_plot::LineStyle::Dashed { length: 10.0 });
 
-    let lum_points: Vec<[f64; 2]> = if let Some((min_y, max_y)) = minmax_y {
-        results
-            .iter()
-            .map(|res| {
-                let x = res.target.ref_rgb[0];
-                let y = res.luminance(min_y, max_y, target_eotf, oetf);
+    let lum_points: Vec<[f64; 2]> = results
+        .iter()
+        .filter(|res| res.is_white_stimulus_reading())
+        .map(|res| {
+            let x = res.target.ref_rgb[0];
+            let y = res.luminance(oetf);
 
-                [x, y]
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
+            [x, y]
+        })
+        .collect();
 
     let lum_line = Line::new(lum_points.clone())
         .color(lum_color)

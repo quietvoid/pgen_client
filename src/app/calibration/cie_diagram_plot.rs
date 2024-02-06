@@ -18,9 +18,7 @@ use ndarray::{
 };
 use tokio::sync::mpsc::Sender;
 
-use crate::{
-    app::PGenAppUpdate, calibration::LuminanceEotf, utils::normalize_float_rgb_components,
-};
+use crate::{app::PGenAppUpdate, utils::normalize_float_rgb_components};
 
 use super::{CalibrationState, ReadingResult};
 
@@ -109,7 +107,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
         let target_rgb_to_xyz = cal_state.target_rgb_to_xyz_conv();
         let results_targets = results
             .iter()
-            .map(|res| create_target_box_for_result(res, target_rgb_to_xyz, target_eotf));
+            .map(|res| create_target_box_for_result(res, target_rgb_to_xyz));
 
         let target_box_colour = if dark_mode {
             Color32::GRAY
@@ -251,9 +249,8 @@ const TARGET_BOX_LENGTH: f64 = 0.0075;
 fn create_target_box_for_result(
     res: &ReadingResult,
     target_rgb_to_xyz: ColorConversion,
-    target_eotf: LuminanceEotf,
 ) -> ([f64; 2], Polygon) {
-    let xyy = res.ref_xyy(None, target_rgb_to_xyz, target_eotf);
+    let xyy = res.ref_xyy_display_space(target_rgb_to_xyz);
 
     let x = xyy[0];
     let y = xyy[1];

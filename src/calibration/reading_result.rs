@@ -11,16 +11,18 @@ use kolor_64::{
 
 use crate::utils::round_colour;
 
-use super::{xyz_to_cct, LuminanceEotf, MyLab, ReadingTarget};
+use super::{xyz_to_cct, CalibrationTarget, LuminanceEotf, MyLab};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct ReadingResult {
-    pub target: ReadingTarget,
+    pub target: CalibrationTarget,
+    // From sample, ArgyllCMS spotread value
     pub xyz: Vec3,
-    pub lab: Vec3,
+    pub argyll_lab: Vec3,
 
-    // xyY from reading XYZ
+    // Calculated from XYZ, D65
     pub xyy: Vec3,
+    pub lab: Vec3,
     pub cct: f64,
 
     // Gamma RGB relative to display peak
@@ -29,7 +31,7 @@ pub struct ReadingResult {
 }
 
 impl ReadingResult {
-    pub fn new(target: ReadingTarget, line: &str) -> Result<Self> {
+    pub fn from_spotread_result(target: CalibrationTarget, line: &str) -> Result<Self> {
         let mut split = line.split(", ");
 
         let xyz_str = split
@@ -53,37 +55,55 @@ impl ReadingResult {
             .ok_or_else(|| anyhow!("expected 3 values for Lab"))?;
 
         let xyz = Vec3::new(x, y, z);
-        let lab = Vec3::new(l, a, b);
+        let argyll_lab = Vec3::new(l, a, b);
 
-        // XYZ -> linear RGB, scaled to display peak
-        let dst_csp = target.colorspace.to_kolor();
-        let rgb_conv = ColorConversion::new(kolor_64::spaces::CIE_XYZ, dst_csp);
-        let rgb = round_colour(rgb_conv.convert(xyz));
-
-        let xyy = transform::XYZ_to_xyY(xyz, WhitePoint::D65);
-        let xyy = round_colour(xyy);
-        let cct = xyz_to_cct(xyz).unwrap_or_default();
-
-        Ok(Self {
-            target,
-            xyz,
-            lab,
-            xyy,
-            cct,
-            rgb,
-        })
+        Ok(Self::from_argyll_results(target, xyz, argyll_lab))
     }
 
-    pub fn luminance(&self, min_y: f64, max_y: f64, target_eotf: LuminanceEotf, oetf: bool) -> f64 {
+    pub fn from_argyll_results(target: CalibrationTarget, xyz: Vec3, argyll_lab: Vec3) -> Self {
+        let mut res = Self {
+            target,
+            xyz,
+            argyll_lab,
+            ..Default::default()
+        };
+        res.set_or_update_calculated_values();
+
+        res
+    }
+
+    pub fn set_or_update_calculated_values(&mut self) {
+        let xyy = transform::XYZ_to_xyY(self.xyz, WhitePoint::D65);
+        self.xyy = round_colour(xyy);
+
+        let lab = transform::XYZ_to_CIELAB(self.xyz / self.target.max_y, WhitePoint::D65);
+        self.lab = round_colour(lab);
+
+        self.cct = xyz_to_cct(self.xyz).unwrap_or_default();
+
+        // XYZ -> linear RGB, scaled to display peak
+        let dst_csp = self.target.colorspace.to_kolor();
+        let rgb_conv = ColorConversion::new(kolor_64::spaces::CIE_XYZ, dst_csp);
+        self.rgb = round_colour(rgb_conv.convert(self.xyz));
+    }
+
+    pub fn target_min_normalized(&self) -> f64 {
+        self.target.min_y / self.target.max_y
+    }
+
+    pub fn luminance(&self, oetf: bool) -> f64 {
+        let target_eotf = self.target.eotf;
+        let (min_y, max_y) = (self.target.min_y, self.target.max_y);
         let y = self.xyy[2] / max_y;
 
-        // Y, minY and maxY are all in display-gamma space
-        // And we convert them to linear luminance, so min needs to be decoded to linear
         if oetf {
             target_eotf.oetf(target_eotf.value(y, true))
         } else {
+            // Y, minY and maxY are all in display-gamma space
+            // And we convert them to linear luminance, so min needs to be decoded to linear
             let min = target_eotf.oetf(min_y / max_y);
             let max = 1.0 - min;
+
             (y * max) + min
         }
     }
@@ -99,99 +119,73 @@ impl ReadingResult {
         }
     }
 
-    pub fn gamma(&self, minmax_y: Option<(f64, f64)>, target_eotf: LuminanceEotf) -> Option<f64> {
-        if let Some((min_y, max_y)) = minmax_y {
-            let ref_stimulus = self.ref_rgb_linear_bpc(minmax_y, target_eotf).x;
-            let lum = self.luminance(min_y, max_y, target_eotf, false);
+    pub fn gamma(&self) -> Option<f64> {
+        if self.is_white_stimulus_reading() && self.not_zero_or_one_rgb() {
+            let lum = self.luminance(false);
+
+            let ref_stimulus = self.ref_rgb_linear_bpc().x;
             Some(LuminanceEotf::gamma(ref_stimulus, lum))
         } else {
             None
         }
     }
 
-    pub fn gamma_around_zero(
-        &self,
-        minmax_y: Option<(f64, f64)>,
-        target_eotf: LuminanceEotf,
-    ) -> Option<f64> {
-        self.gamma(minmax_y, target_eotf)
-            .map(|gamma| gamma - target_eotf.mean())
+    pub fn gamma_around_zero(&self) -> Option<f64> {
+        self.gamma().map(|gamma| gamma - self.target.eotf.mean())
     }
 
     // BPC applied to target ref RGB in linear space
-    pub fn ref_rgb_linear_bpc(
-        &self,
-        minmax_y: Option<(f64, f64)>,
-        target_eotf: LuminanceEotf,
-    ) -> Vec3 {
-        let ref_rgb = self.target.ref_rgb;
+    pub fn ref_rgb_linear_bpc(&self) -> Vec3 {
+        let min = self.target.eotf.oetf(self.target_min_normalized());
+        let max = 1.0 - min;
 
-        if let Some((min_y, max_y)) = minmax_y {
-            let min = target_eotf.oetf(min_y / max_y);
-            let max = 1.0 - min;
-
-            (ref_rgb * max) + min
-        } else {
-            ref_rgb
-        }
+        (self.target.ref_rgb * max) + min
     }
 
     // Encode linear RGB to target EOTF, need to be relative to the target display
-    pub fn ref_xyz(
+    // The XYZ is scaled to current measured max Y
+    pub fn ref_xyz_display_space(
         &self,
-        minmax_y: Option<(f64, f64)>,
         target_rgb_to_xyz: ColorConversion,
-        target_eotf: LuminanceEotf,
+        scale_to_y: bool,
     ) -> Vec3 {
-        let xyz = target_rgb_to_xyz.convert(target_eotf.convert_vec(self.target.ref_rgb, false));
+        let ref_rgb = self
+            .target
+            .eotf
+            .convert_vec(self.ref_rgb_linear_bpc(), false);
 
-        if let Some((min_y, max_y)) = minmax_y {
-            // BPC in 0-1
-            let min = min_y / max_y;
-            let max = 1.0 - min;
-            let v = (xyz * max) + min;
+        let xyz = target_rgb_to_xyz.convert(ref_rgb);
 
+        if scale_to_y {
             // Scale Y to measured peak
-            v * max_y
+            xyz * self.target.max_y
         } else {
             xyz
         }
     }
 
-    pub fn ref_xyy(
-        &self,
-        minmax_y: Option<(f64, f64)>,
-        target_rgb_to_xyz: ColorConversion,
-        target_eotf: LuminanceEotf,
-    ) -> Vec3 {
-        let xyz = self.ref_xyz(minmax_y, target_rgb_to_xyz, target_eotf);
+    // The Y is scaled to current measured max Y
+    pub fn ref_xyy_display_space(&self, target_rgb_to_xyz: ColorConversion) -> Vec3 {
+        let xyz = self.ref_xyz_display_space(target_rgb_to_xyz, true);
         XYZ_to_xyY(xyz, WhitePoint::D65)
     }
 
-    pub fn ref_lab(
-        &self,
-        minmax_y: Option<(f64, f64)>,
-        target_rgb_to_xyz: ColorConversion,
-        target_eotf: LuminanceEotf,
-    ) -> Vec3 {
-        let ref_xyz = self.ref_xyz(minmax_y, target_rgb_to_xyz, target_eotf);
+    pub fn ref_lab_display_space(&self, target_rgb_to_xyz: ColorConversion) -> Vec3 {
+        let ref_xyz = self.ref_xyz_display_space(target_rgb_to_xyz, false);
 
-        let ref_xyz = if let Some(max_y) = minmax_y.map(|e| e.1) {
-            ref_xyz / max_y
-        } else {
-            ref_xyz
-        };
-
+        // Calculated L*a*b* is in D65
         XYZ_to_CIELAB(ref_xyz, WhitePoint::D65)
     }
 
-    pub fn delta_e2000(
-        &self,
-        minmax_y: Option<(f64, f64)>,
-        target_rgb_to_xyz: ColorConversion,
-        target_eotf: LuminanceEotf,
-    ) -> DeltaE {
-        let ref_lab = self.ref_lab(minmax_y, target_rgb_to_xyz, target_eotf);
+    pub fn delta_e2000(&self, target_rgb_to_xyz: ColorConversion) -> DeltaE {
+        let mut ref_lab = self.ref_lab_display_space(target_rgb_to_xyz);
+        ref_lab.x = self.lab.x;
+
+        MyLab(ref_lab).delta(MyLab(self.lab), DE2000)
+    }
+
+    pub fn delta_e2000_incl_luminance(&self, target_rgb_to_xyz: ColorConversion) -> DeltaE {
+        let ref_lab = self.ref_lab_display_space(target_rgb_to_xyz);
 
         MyLab(ref_lab).delta(MyLab(self.lab), DE2000)
     }
@@ -199,90 +193,79 @@ impl ReadingResult {
     // All equal and not zero, means we're measuring white with stimulus
     pub fn is_white_stimulus_reading(&self) -> bool {
         let ref_red = self.target.ref_rgb.x;
-
-        if ref_red > 0.0 {
-            self.target.ref_rgb.to_array().iter().all(|e| *e == ref_red)
-        } else {
-            false
-        }
+        self.target.ref_rgb.to_array().iter().all(|e| *e == ref_red)
     }
 
-    pub fn results_minmax_y(results: &[Self]) -> Option<(f64, f64)> {
-        if results.iter().any(|e| e.is_white_stimulus_reading()) {
-            results
-                .iter()
-                .map(|res| res.xyy[2])
-                .minmax_by(|a, b| a.total_cmp(b))
-                .into_option()
-        } else {
-            None
-        }
+    pub fn not_zero_or_one_rgb(&self) -> bool {
+        (0.01..1.0).contains(&self.target.ref_rgb.x)
     }
 
     pub fn results_average_delta_e2000(
         results: &[Self],
-        minmax_y: Option<(f64, f64)>,
         target_rgb_to_xyz: ColorConversion,
-        target_eotf: LuminanceEotf,
     ) -> f32 {
         let deltae_2000_sum: f32 = results
             .iter()
-            .map(|e| {
-                *e.delta_e2000(minmax_y, target_rgb_to_xyz, target_eotf)
-                    .value()
-            })
+            .map(|e| *e.delta_e2000(target_rgb_to_xyz).value())
             .sum();
 
         deltae_2000_sum / results.len() as f32
     }
 
-    pub fn results_average_gamma(
+    pub fn results_average_delta_e2000_incl_luminance(
         results: &[Self],
-        minmax_y: Option<(f64, f64)>,
-        target_eotf: LuminanceEotf,
-    ) -> Option<f64> {
-        if minmax_y.is_some() {
-            let gamma_sum: f64 = results
-                .iter()
-                .filter_map(|e| e.gamma(minmax_y, target_eotf))
-                .sum();
+        target_rgb_to_xyz: ColorConversion,
+    ) -> f32 {
+        let deltae_2000_sum: f32 = results
+            .iter()
+            .map(|e| *e.delta_e2000_incl_luminance(target_rgb_to_xyz).value())
+            .sum();
 
-            Some(gamma_sum / results.len() as f64)
-        } else {
-            None
-        }
+        deltae_2000_sum / results.len() as f32
+    }
+
+    pub fn results_average_gamma(results: &[Self]) -> Option<f64> {
+        let gamma_sum: f64 = results.iter().filter_map(|e| e.gamma()).sum();
+
+        Some(gamma_sum / results.len() as f64)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use kolor_64::Vec3;
+    use kolor_64::{spaces::CIE_XYZ, ColorConversion, Vec3};
 
-    use super::{ReadingResult, ReadingTarget};
+    use super::{CalibrationTarget, ReadingResult};
 
     #[test]
     fn parse_reading_str() {
         let line =
             "Result is XYZ: 1.916894 2.645760 2.925977, D50 Lab: 18.565392 -13.538479 -6.117640";
-        let target = ReadingTarget::default();
+        let target = CalibrationTarget::default();
 
-        let reading = ReadingResult::new(target, line).unwrap();
+        let reading = ReadingResult::from_spotread_result(target, line).unwrap();
         assert_eq!(reading.xyz, Vec3::new(1.916894, 2.645_76, 2.925977));
-        assert_eq!(reading.lab, Vec3::new(18.565392, -13.538_479, -6.11764));
+        assert_eq!(
+            reading.argyll_lab,
+            Vec3::new(18.565392, -13.538_479, -6.11764)
+        );
     }
 
     #[test]
     fn calculate_result_rgb() {
         let line = "Result is XYZ: 33.956292 19.408215 138.000457, D50 Lab: 51.161418 63.602645 -121.627088";
 
-        let target = ReadingTarget {
+        let target = CalibrationTarget {
             ref_rgb: Vec3::new(0.25024438, 0.25024438, 1.0),
             ..Default::default()
         };
 
-        let reading = ReadingResult::new(target, line).unwrap();
+        let reading = ReadingResult::from_spotread_result(target, line).unwrap();
         assert_eq!(reading.xyz, Vec3::new(33.956292, 19.408215, 138.000457));
-        assert_eq!(reading.lab, Vec3::new(51.161418, 63.602645, -121.627088));
+        assert_eq!(
+            reading.argyll_lab,
+            Vec3::new(51.161418, 63.602645, -121.627088)
+        );
 
         assert_eq!(reading.rgb, Vec3::new(11.403131, 9.232091, 143.827225));
     }
@@ -292,16 +275,135 @@ mod tests {
         let line =
             "Result is XYZ: 5.509335 5.835576 5.835576, D50 Lab: 28.993788 -1.357676 -7.541553";
 
-        let target = ReadingTarget {
-            ref_rgb: Vec3::new(0.029116, 0.029116, 0.029116),
+        let target = CalibrationTarget {
+            ref_rgb: Vec3::new(0.05, 0.05, 0.05),
             ..Default::default()
         };
 
-        let reading = ReadingResult::new(target, line).unwrap();
+        let reading = ReadingResult::from_spotread_result(target, line).unwrap();
         assert_eq!(reading.xyz, Vec3::new(5.509335, 5.835576, 5.835576));
-        assert_eq!(reading.lab, Vec3::new(28.993788, -1.357676, -7.541553));
+        assert_eq!(
+            reading.argyll_lab,
+            Vec3::new(28.993788, -1.357676, -7.541553)
+        );
         assert_eq!(reading.xyy, Vec3::new(0.320674, 0.339663, 5.835576));
+        assert_eq!(reading.lab, Vec3::new(28.993789, -0.434605, 2.169734));
 
         assert_eq!(reading.rgb, Vec3::new(5.973441, 5.850096, 5.285468));
+    }
+
+    #[test]
+    fn ref_values_from_rgb() {
+        // 5% stimulus
+        let target = CalibrationTarget {
+            ref_rgb: Vec3::new(0.5, 0.5, 0.5),
+            ..Default::default()
+        };
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+
+        let reading = ReadingResult {
+            target,
+            ..Default::default()
+        };
+        assert_eq!(reading.ref_rgb_linear_bpc(), Vec3::new(0.5, 0.5, 0.5));
+
+        // EOTF encoded
+        assert_eq!(
+            reading.ref_xyz_display_space(target_rgb_to_xyz, true),
+            Vec3::new(20.685804847401677, 21.763764082403103, 23.697039245842973)
+        );
+        assert_eq!(
+            reading.ref_xyy_display_space(target_rgb_to_xyz),
+            Vec3::new(0.31272661468101204, 0.3290231303260619, 21.763764082403103)
+        );
+        assert_eq!(
+            reading.ref_lab_display_space(target_rgb_to_xyz),
+            Vec3::new(53.77545209276276, 0.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn ref_values_from_rgb_with_bpc() {
+        // 5% stimulus
+        let target = CalibrationTarget {
+            min_y: 0.1,
+            ref_rgb: Vec3::new(0.5, 0.5, 0.5),
+            ..Default::default()
+        };
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+
+        let reading = ReadingResult {
+            target,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            reading.ref_rgb_linear_bpc(),
+            Vec3::new(0.5216438064054153, 0.5216438064054153, 0.5216438064054153)
+        );
+
+        // EOTF encoded, scaled to max Y
+        assert_eq!(
+            reading.ref_xyz_display_space(target_rgb_to_xyz, true),
+            Vec3::new(22.707082363307524, 23.890372513922078, 26.01255430433378)
+        );
+        assert_eq!(
+            reading.ref_xyy_display_space(target_rgb_to_xyz),
+            Vec3::new(0.3127266146810121, 0.32902313032606184, 23.890372513922078)
+        );
+        assert_eq!(
+            reading.ref_lab_display_space(target_rgb_to_xyz),
+            Vec3::new(55.97786542816817, 5.551115123125783e-14, 0.0)
+        );
+    }
+
+    #[test]
+    fn delta_e2000_calc() {
+        // 100% stimulus
+        let target = CalibrationTarget {
+            min_y: 0.13,
+            max_y: 130.0,
+            ref_rgb: Vec3::new(1.0, 1.0, 1.0),
+            ..Default::default()
+        };
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+
+        let xyz = Vec3::new(122.495956, 128.990751, 139.074044);
+        let argyll_lab = Vec3::new(110.273101, -2.752364, -20.324487);
+        let reading = ReadingResult::from_argyll_results(target, xyz, argyll_lab);
+
+        assert_eq!(0.677219, *reading.delta_e2000(target_rgb_to_xyz).value());
+        assert_eq!(
+            0.6988424,
+            *reading
+                .delta_e2000_incl_luminance(target_rgb_to_xyz)
+                .value()
+        );
+    }
+
+    #[test]
+    fn test_xyz() {
+        let target = CalibrationTarget {
+            min_y: 0.132061,
+            max_y: 129.072427,
+            ref_rgb: Vec3::new(0.500489, 0.500489, 0.500489),
+            ..Default::default()
+        };
+
+        let xyz = Vec3::new(26.976765, 28.54357, 30.785474);
+        let argyll_lab = Vec3::new(60.376676, -2.187671, -12.309911);
+        let reading = ReadingResult::from_argyll_results(target, xyz, argyll_lab);
+
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+        let ref_lab = reading.ref_lab_display_space(target_rgb_to_xyz);
+
+        let de2000 = reading.delta_e2000(target_rgb_to_xyz);
+        let de2000_incl_lum = reading.delta_e2000_incl_luminance(target_rgb_to_xyz);
+
+        assert_eq!(ref_lab, Vec3::new(56.048075289473815, 0.0, 0.0));
+        assert_eq!(reading.lab, Vec3::new(54.148156, -0.569625, 0.382084));
+
+        assert_eq!(*de2000.value(), 0.91667163);
+        assert_eq!(*de2000_incl_lum.value(), 2.0169756);
     }
 }

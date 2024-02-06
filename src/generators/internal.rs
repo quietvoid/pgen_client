@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
@@ -32,6 +33,8 @@ pub struct InternalPattern {
 )]
 pub enum PatchListPreset {
     #[default]
+    Basic,
+
     Primaries,
     Secondaries,
 
@@ -39,7 +42,7 @@ pub enum PatchListPreset {
     Greyscale,
     #[strum(to_string = "Saturation sweep")]
     SaturationSweep,
-    #[strum(to_string = "Min/peak brightness")]
+    #[strum(to_string = "Min/max brightness")]
     MinMax,
 }
 
@@ -74,13 +77,25 @@ impl InternalGenerator {
     }
 
     pub fn minmax_y(&self) -> Option<(f64, f64)> {
-        ReadingResult::results_minmax_y(&self.results())
+        self.results()
+            .iter()
+            .map(|res| res.xyy[2])
+            .minmax_by(|a, b| a.total_cmp(b))
+            .into_option()
     }
 }
 
 impl PatchListPreset {
     pub fn rgb_float_list(&self) -> Vec<[f64; 3]> {
         match self {
+            Self::Basic => {
+                let mut list = Vec::with_capacity(5);
+                list.push([0.0, 0.0, 0.0]);
+                list.extend(RGB_PRIMARIES);
+                list.push([1.0, 1.0, 1.0]);
+
+                list
+            }
             Self::Primaries => RGB_PRIMARIES.to_vec(),
             Self::Secondaries => RGB_SECONDARIES.to_vec(),
             Self::Greyscale => {
