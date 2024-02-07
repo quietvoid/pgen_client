@@ -94,7 +94,7 @@ Usage is targeted at more advanced users that know how to interpret the measurem
 > [!WARNING]
 > I cannot guarantee that the displayed measurement data is accurate or even correct.  
 > My knowledge of colour math is limited and I have not done extensive verification.  
-> Do consider double checking results with other calibration software such as `DisplayCAL`.
+> Do consider double checking results with other calibration software such as `DisplayCAL` or `HCFR`.
 
 **Instructions**:
 1. Select the `Internal` pattern generator.
