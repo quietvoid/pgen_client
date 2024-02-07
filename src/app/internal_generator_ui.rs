@@ -13,7 +13,9 @@ use crate::{
     utils::rgb_10b_to_8b,
 };
 
-use super::{status_color_active, utils::is_dragvalue_finished, CalibrationState, PGenApp};
+use super::{
+    status_color_active, utils::is_dragvalue_finished, CalibrationState, PGenApp, ReadFileType,
+};
 
 const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];
 
@@ -54,14 +56,14 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                 if ui.button("Load").clicked() {
                     internal_gen.load_preset(&app.state.pattern_config);
                 }
-            });
 
-            /* TODO
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button("Load file").clicked() {
+                    app.ctx
+                        .external_tx
+                        .try_send(ExternalJobCmd::ReadFile(ReadFileType::PatchList))
+                        .ok();
                 }
-            })
-            */
+            });
         });
 
         ui.separator();
@@ -335,15 +337,12 @@ fn add_patches_info_right_side(app: &mut PGenApp, ui: &mut Ui) {
             }
 
             let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
-            if has_selected_patch {
-                ui.add_space(5.0);
-                if ui.button("Measure selected patch").clicked() {
-                    let internal_gen = &mut app.cal_state.internal_gen;
-                    internal_gen.started = true;
-                    internal_gen.auto_advance = false;
+            if has_selected_patch && ui.button("Measure selected patch").clicked() {
+                let internal_gen = &mut app.cal_state.internal_gen;
+                internal_gen.started = true;
+                internal_gen.auto_advance = false;
 
-                    app.calibration_send_measure_selected_patch();
-                }
+                app.calibration_send_measure_selected_patch();
             }
         });
     });

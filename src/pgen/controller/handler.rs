@@ -470,9 +470,7 @@ impl PGenController {
                         }
                     }
                     PGenSetConfCommand::SetDoviStatus(_)
-                    | PGenSetConfCommand::SetDoviInterface(_) => {
-                        // TODO: Store?
-                    }
+                    | PGenSetConfCommand::SetDoviInterface(_) => {}
                     PGenSetConfCommand::SetDoviMapMode(dovi_map_mode) => {
                         pgen_info.output_config.dovi_map_mode = dovi_map_mode;
                     }

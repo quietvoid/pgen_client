@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use eframe::{
     egui,
     epaint::{Color32, ColorImage},
@@ -17,6 +19,7 @@ pub mod eframe_app;
 mod external_generator_ui;
 mod internal_generator_ui;
 pub mod pgen_app;
+pub mod read_file_ops;
 pub mod utils;
 
 pub use pgen_app::PGenApp;
@@ -43,6 +46,12 @@ pub enum PGenAppUpdate {
     SpotreadStarted(bool),
     SpotreadRes(Option<ReadingResult>),
     CieDiagramReady(ColorImage),
+    ReadFileResponse(ReadFileType, PathBuf),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ReadFileType {
+    PatchList,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -66,5 +75,19 @@ fn status_color_active(ctx: &egui::Context, active: bool) -> Color32 {
         Color32::DARK_RED
     } else {
         Color32::LIGHT_RED
+    }
+}
+
+impl ReadFileType {
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::PatchList => "Patch list file",
+        }
+    }
+
+    pub fn filters(&self) -> &'static [(&'static str, &'static [&'static str])] {
+        match self {
+            Self::PatchList => &[("CSV", &["csv"]), ("Text", &["txt"])],
+        }
     }
 }

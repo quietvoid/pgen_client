@@ -207,7 +207,7 @@ fn compute_cie_xy_diagram_image(points: &[[f64; 2]]) -> ColorImage {
                 .to_array()
                 .map(|c| gamma_u8_from_linear_f32(c as f32));
 
-            Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+            Color32::from_rgb(rgb[0], rgb[1], rgb[2]).gamma_multiply(0.85)
         })
         .collect();
 

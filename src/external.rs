@@ -3,7 +3,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
-    app::PGenAppUpdate,
+    app::{PGenAppUpdate, ReadFileType},
     calibration::CalibrationTarget,
     generators::{
         start_tcp_generator_client, GeneratorClient, GeneratorClientCmd, GeneratorInterface,
@@ -25,6 +25,8 @@ pub enum ExternalJobCmd {
     StopSpotreadProcess,
     SpotreadMeasure((PGenPatternConfig, CalibrationTarget)),
     SpotreadDoneMeasuring,
+
+    ReadFile(ReadFileType),
 }
 
 pub fn start_external_jobs_worker(
@@ -101,6 +103,20 @@ pub fn start_external_jobs_worker(
                                 }
                             }
                             ExternalJobCmd::SpotreadDoneMeasuring => {
+                                app_tx.try_send(PGenAppUpdate::DoneProcessing).ok();
+                            }
+                            ExternalJobCmd::ReadFile(file_type) => {
+                                let title = file_type.title();
+
+                                let mut dialog = rfd::FileDialog::new().set_title(title);
+                                for (filter_name, exts) in file_type.filters() {
+                                    dialog = dialog.add_filter(*filter_name, exts);
+                                }
+
+                                if let Some(path) = dialog.pick_file() {
+                                    app_tx.try_send(PGenAppUpdate::ReadFileResponse(file_type, path)).ok();
+                                }
+
                                 app_tx.try_send(PGenAppUpdate::DoneProcessing).ok();
                             }
                         }

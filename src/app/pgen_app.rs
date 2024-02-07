@@ -1,4 +1,5 @@
 use std::net::{IpAddr, SocketAddr};
+use std::path::PathBuf;
 
 use eframe::egui::{self, Context, Sense, Ui};
 use eframe::epaint::{Stroke, Vec2};
@@ -6,6 +7,7 @@ use strum::IntoEnumIterator;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::app::calibration::handle_spotread_result;
+use crate::app::read_file_ops::parse_patch_list_csv_file;
 use crate::calibration::CalibrationTarget;
 use crate::external::ExternalJobCmd;
 use crate::generators::{GeneratorState, GeneratorType};
@@ -23,9 +25,9 @@ use crate::utils::{
 use super::calibration::add_calibration_ui;
 use super::external_generator_ui::add_external_generator_ui;
 use super::internal_generator_ui::add_internal_generator_ui;
-use super::status_color_active;
 use super::utils::is_dragvalue_finished;
 pub use super::{calibration::CalibrationState, PGenAppContext, PGenAppSavedState, PGenAppUpdate};
+use super::{status_color_active, ReadFileType};
 
 pub struct PGenApp {
     pub ctx: PGenAppContext,
@@ -140,6 +142,9 @@ impl PGenApp {
                 }
                 PGenAppUpdate::CieDiagramReady(image) => {
                     self.cal_state.set_cie_texture(egui_ctx, image);
+                }
+                PGenAppUpdate::ReadFileResponse(file_type, data) => {
+                    self.handle_read_file_response(file_type, data);
                 }
             }
         }
@@ -979,6 +984,12 @@ impl PGenApp {
                 .external_tx
                 .try_send(ExternalJobCmd::SpotreadMeasure((config, target)))
                 .ok();
+        }
+    }
+
+    fn handle_read_file_response(&mut self, file_type: ReadFileType, path: PathBuf) {
+        match file_type {
+            ReadFileType::PatchList => parse_patch_list_csv_file(self, path),
         }
     }
 }
