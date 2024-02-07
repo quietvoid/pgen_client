@@ -50,8 +50,6 @@ With the exception of `Display mode` and `Dynamic range` configurations:
 - All configuration changes require that the `PGenerator` software be restarted before they are applied to the output.  
   This can be done with either the `Restart PGenerator software` or the `Set AVI/DRM infoframe` buttons.
 
-&nbsp;
-
 <a href="https://raw.githubusercontent.com/quietvoid/pgen_client/main/assets/01external-gen.jpg">
   <img src="https://raw.githubusercontent.com/quietvoid/pgen_client/main/assets/01external-gen.jpg" width="250">
 </a>
@@ -66,7 +64,7 @@ The most important settings here are:
 
 With both internal/external pattern generators, the patches are sent at the configured size/position in `pgen_client`.
 
-If the output is configured to the `Limited` Quant range, the `Limited range` checkbox must be checked.
+If the output is configured to the `Limited` Quant range, the `Limited range` checkbox must be checked.  
 That will send patterns in limited RGB range to the `PGenerator`, ensuring correct patches are displayed.
 
 For patch and background colours, they are either selected manually or through a pattern generator as described below.  
@@ -94,8 +92,8 @@ Usage is targeted at more advanced users that know how to interpret the measurem
 `ArgyllCMS` must be installed on the system and the executables present in `PATH`.
 
 > [!WARNING]
-> I cannot guarantee that the displayed measurement data is accurate or even correct.
-> My knowledge of colour math is limited and I have not done extensive verification.
+> I cannot guarantee that the displayed measurement data is accurate or even correct.  
+> My knowledge of colour math is limited and I have not done extensive verification.  
 > Do consider double checking results with other calibration software such as `DisplayCAL`.
 
 **Instructions**:
@@ -104,8 +102,6 @@ Usage is targeted at more advanced users that know how to interpret the measurem
 2. Set the min/max target brightness as well as target primaries for the calibration.
 3. Load a patch list to measure.
 4. Measure all patches or select a single one and measure it.
-
-&nbsp;
 
 <a href="https://raw.githubusercontent.com/quietvoid/pgen_client/main/assets/02internal-gen.jpg">
   <img src="https://raw.githubusercontent.com/quietvoid/pgen_client/main/assets/02internal-gen.jpg" width="250">
