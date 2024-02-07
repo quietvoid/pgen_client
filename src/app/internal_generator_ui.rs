@@ -92,9 +92,8 @@ fn add_spotread_cli_args_ui(app: &mut PGenApp, ui: &mut Ui) {
             ui.label("");
             ui.end_row();
 
-            let actual_len = app.cal_state.spotread_cli_args.len();
-            for i in 0..=actual_len {
-                let real_row = i < actual_len;
+            for i in 0..=app.cal_state.spotread_cli_args.len() {
+                let real_row = i < app.cal_state.spotread_cli_args.len();
                 {
                     let args = if real_row {
                         &mut app.cal_state.spotread_cli_args[i]
