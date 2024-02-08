@@ -102,12 +102,14 @@ fn add_spotread_cli_args_ui(app: &mut PGenApp, ui: &mut Ui) {
                     };
 
                     ui.add_sized(Vec2::new(75.0, 20.0), TextEdit::singleline(&mut args.0));
-                    let value_res =
-                        ui.add_sized(Vec2::new(300.0, 20.0), TextEdit::singleline(&mut args.1));
+                    let value_res = ui.add_sized(
+                        Vec2::new(300.0, 20.0),
+                        TextEdit::singleline(args.1.get_or_insert_with(Default::default)),
+                    );
 
                     let is_enabled = {
                         let tmp_args = &app.cal_state.spotread_tmp_args;
-                        real_row || (!tmp_args.0.is_empty() && !tmp_args.1.is_empty())
+                        real_row || (!tmp_args.0.is_empty() && tmp_args.1.is_some())
                     };
                     let add_value_changed = is_enabled && !real_row && value_res.lost_focus();
 
@@ -121,7 +123,7 @@ fn add_spotread_cli_args_ui(app: &mut PGenApp, ui: &mut Ui) {
                                 app.cal_state.spotread_cli_args.push(tmp_args.clone());
 
                                 tmp_args.0.clear();
-                                tmp_args.1.clear();
+                                tmp_args.1.take();
                             }
                         }
                     });

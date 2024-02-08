@@ -29,8 +29,8 @@ use super::PGenApp;
 #[derive(Clone, Deserialize, Serialize)]
 pub struct CalibrationState {
     pub spotread_started: bool,
-    pub spotread_cli_args: Vec<(String, String)>,
-    pub spotread_tmp_args: (String, String),
+    pub spotread_cli_args: Vec<(String, Option<String>)>,
+    pub spotread_tmp_args: (String, Option<String>),
 
     pub target_csp: TargetColorspace,
 
@@ -154,7 +154,7 @@ impl Default for CalibrationState {
     fn default() -> Self {
         Self {
             spotread_started: false,
-            spotread_cli_args: vec![("-y".to_owned(), "l".to_owned())],
+            spotread_cli_args: Vec::new(),
             spotread_tmp_args: Default::default(),
 
             min_y: Default::default(),

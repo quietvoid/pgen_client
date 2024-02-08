@@ -21,7 +21,7 @@ pub enum ExternalJobCmd {
     StopGeneratorClient(GeneratorClient),
 
     // spotread
-    StartSpotreadProcess(Vec<(String, String)>),
+    StartSpotreadProcess(Vec<(String, Option<String>)>),
     StopSpotreadProcess,
     SpotreadMeasure((PGenPatternConfig, CalibrationTarget)),
     SpotreadDoneMeasuring,

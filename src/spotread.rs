@@ -37,7 +37,7 @@ pub fn start_spotread_worker(
     app_tx: Sender<PGenAppUpdate>,
     external_tx: Sender<ExternalJobCmd>,
     controller_handle: PGenControllerHandle,
-    cli_args: Vec<(String, String)>,
+    cli_args: Vec<(String, Option<String>)>,
 ) -> Result<Sender<SpotreadCmd>> {
     let (tx, rx) = tokio::sync::mpsc::channel(5);
     let mut rx = ReceiverStream::new(rx).fuse();
@@ -134,13 +134,17 @@ pub fn start_spotread_worker(
 }
 
 impl SpotreadProc {
-    pub fn new(app_tx: Sender<PGenAppUpdate>, cli_args: Vec<(String, String)>) -> Result<Self> {
+    pub fn new(
+        app_tx: Sender<PGenAppUpdate>,
+        cli_args: Vec<(String, Option<String>)>,
+    ) -> Result<Self> {
+        let args_iter = cli_args
+            .into_iter()
+            .flat_map(|kv| once(kv.0).chain(once(kv.1.unwrap_or_default())))
+            .filter(|a| !a.is_empty());
+
         let mut child = Command::new("spotread")
-            .args(
-                cli_args
-                    .iter()
-                    .flat_map(|kv| once(kv.0.as_str()).chain(once(kv.1.as_str()))),
-            )
+            .args(args_iter)
             .env("ARGYLL_NOT_INTERACTIVE", "1")
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())
