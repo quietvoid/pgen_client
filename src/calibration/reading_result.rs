@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use deltae::{DEMethod::DE2000, Delta, DeltaE};
 use itertools::Itertools;
 use kolor_64::{
@@ -8,10 +8,17 @@ use kolor_64::{
     },
     ColorConversion, Vec3,
 };
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 use crate::utils::round_colour;
 
 use super::{xyz_to_cct, CalibrationTarget, LuminanceEotf, MyLab};
+
+static RESULT_XYZ_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"XYZ:\s(-?\d+\.\d+)\s(-?\d+\.\d+)\s(-?\d+\.\d+)").unwrap());
+static RESULT_LAB_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"Lab:\s(-?\d+\.\d+)\s(?<a>-?\d+\.\d+)\s(?<b>-?\d+\.\d+)").unwrap());
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ReadingResult {
@@ -32,24 +39,28 @@ pub struct ReadingResult {
 
 impl ReadingResult {
     pub fn from_spotread_result(target: CalibrationTarget, line: &str) -> Result<Self> {
-        let mut split = line.split(", ");
+        let res = RESULT_XYZ_REGEX.captures(line).and_then(|xyz_caps| {
+            RESULT_LAB_REGEX
+                .captures(line)
+                .map(|lab_caps| (xyz_caps, lab_caps))
+        });
+        if res.is_none() {
+            bail!("Failed parsing spotread result: {line}");
+        }
 
-        let xyz_str = split
-            .next()
-            .and_then(|e| e.strip_prefix("Result is XYZ: "))
-            .ok_or_else(|| anyhow!("expected both XYZ and Lab results"))?;
-        let lab_str = split
-            .next()
-            .and_then(|e| e.strip_prefix("D50 Lab: "))
-            .ok_or_else(|| anyhow!("expected Lab results"))?;
+        let (xyz_caps, lab_caps) = res.unwrap();
 
-        let (x, y, z) = xyz_str
-            .split_whitespace()
+        let (x, y, z) = xyz_caps
+            .extract::<3>()
+            .1
+            .iter()
             .filter_map(|e| e.parse::<f64>().ok())
             .collect_tuple()
             .ok_or_else(|| anyhow!("expected 3 values for XYZ"))?;
-        let (l, a, b) = lab_str
-            .split_whitespace()
+        let (l, a, b) = lab_caps
+            .extract::<3>()
+            .1
+            .iter()
             .filter_map(|e| e.parse::<f64>().ok())
             .collect_tuple()
             .ok_or_else(|| anyhow!("expected 3 values for Lab"))?;
@@ -241,6 +252,19 @@ mod tests {
     fn parse_reading_str() {
         let line =
             "Result is XYZ: 1.916894 2.645760 2.925977, D50 Lab: 18.565392 -13.538479 -6.117640";
+        let target = CalibrationTarget::default();
+
+        let reading = ReadingResult::from_spotread_result(target, line).unwrap();
+        assert_eq!(reading.xyz, Vec3::new(1.916894, 2.645_76, 2.925977));
+        assert_eq!(
+            reading.argyll_lab,
+            Vec3::new(18.565392, -13.538_479, -6.11764)
+        );
+    }
+
+    #[test]
+    fn parse_white_reference_str() {
+        let line = "Making result XYZ: 1.916894 2.645760 2.925977, D50 Lab: 18.565392 -13.538479 -6.117640 white reference.";
         let target = CalibrationTarget::default();
 
         let reading = ReadingResult::from_spotread_result(target, line).unwrap();

@@ -204,7 +204,7 @@ impl SpotreadProc {
         // Read result and rest of stdouf buffer
         if let Some(lines) = self.read_stdout_lines().await? {
             for line in lines {
-                if line.starts_with("Result is XYZ:") {
+                if line.contains("XYZ:") {
                     let reading = ReadingResult::from_spotread_result(target, &line)?;
                     self.app_tx
                         .send(PGenAppUpdate::SpotreadRes(Some(reading)))

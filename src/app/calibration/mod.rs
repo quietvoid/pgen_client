@@ -154,7 +154,7 @@ impl Default for CalibrationState {
     fn default() -> Self {
         Self {
             spotread_started: false,
-            spotread_cli_args: Vec::new(),
+            spotread_cli_args: Default::default(),
             spotread_tmp_args: Default::default(),
 
             min_y: Default::default(),
