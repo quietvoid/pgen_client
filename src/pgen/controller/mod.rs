@@ -112,6 +112,12 @@ impl PGenControllerState {
             self.pattern_config.position = position;
         }
     }
+
+    pub fn is_dovi_mode(&self) -> bool {
+        self.pgen_info
+            .as_ref()
+            .is_some_and(|e| e.output_config.dynamic_range == DynamicRange::Dovi)
+    }
 }
 
 impl DisplayMode {

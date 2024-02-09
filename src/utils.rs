@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use kolor_64::Vec3;
 
-use crate::pgen::pattern_config::PGenPatternConfig;
+use crate::pgen::{pattern_config::PGenPatternConfig, BitDepth};
 
 pub type Rgb = [u16; 3];
 
@@ -89,11 +89,11 @@ pub fn scale_pattern_config_rgb_values(
     limited_range: bool,
     prev_limited_range: bool,
 ) {
-    let diff = depth.abs_diff(prev_depth) as f32;
     if depth == prev_depth && limited_range == prev_limited_range {
         return;
     }
 
+    let diff = depth.abs_diff(prev_depth) as f32;
     if prev_depth == 8 {
         // 8 bit to 10 bit
         pattern_config
@@ -116,6 +116,9 @@ pub fn scale_pattern_config_rgb_values(
                 *c = val.round() as u16;
             });
     }
+
+    pattern_config.bit_depth = BitDepth::from_repr(depth as usize).unwrap();
+    pattern_config.limited_range = limited_range;
 }
 
 /// Returns the min as well max - min as the real max value
@@ -146,5 +149,30 @@ pub fn normalize_float_rgb_components(rgb: Vec3) -> Vec3 {
         round_colour(normalized)
     } else {
         rgb
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        pgen::{pattern_config::PGenPatternConfig, BitDepth},
+        utils::scale_pattern_config_rgb_values,
+    };
+
+    #[test]
+    fn test_8bit_override() {
+        let mut new_pattern_cfg = PGenPatternConfig {
+            patch_colour: [514, 512, 512],
+            background_colour: [64, 64, 64],
+            bit_depth: BitDepth::Ten,
+            ..Default::default()
+        };
+
+        let prev_depth = new_pattern_cfg.bit_depth as u8;
+        scale_pattern_config_rgb_values(&mut new_pattern_cfg, 8, prev_depth, false, false);
+
+        assert_eq!(new_pattern_cfg.patch_colour, [129, 128, 128]);
+        assert_eq!(new_pattern_cfg.background_colour, [16, 16, 16]);
+        assert_eq!(new_pattern_cfg.bit_depth, BitDepth::Eight);
     }
 }

@@ -15,6 +15,7 @@ use crate::pgen::{
     ColorFormat, DynamicRange,
 };
 use crate::pgen::{BitDepth, Colorimetry, HdrEotf, Primaries, QuantRange};
+use crate::utils::scale_pattern_config_rgb_values;
 
 use super::{DisplayMode, PGenControllerContext, PGenControllerState};
 
@@ -251,13 +252,22 @@ impl PGenController {
     pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig) {
         // Only send non repeated patterns
         if self.state.pattern_config.patch_colour != config.patch_colour {
-            // Update current pattern and send it
-            self.state.pattern_config = PGenPatternConfig {
+            let mut new_pattern_cfg = PGenPatternConfig {
                 bit_depth: config.bit_depth,
                 patch_colour: config.patch_colour,
                 background_colour: config.background_colour,
                 ..self.state.pattern_config
             };
+
+            if self.state.is_dovi_mode() && new_pattern_cfg.bit_depth != BitDepth::Eight {
+                // Ensure DoVi patterns are 8 bit
+                let prev_depth = new_pattern_cfg.bit_depth as u8;
+
+                scale_pattern_config_rgb_values(&mut new_pattern_cfg, 8, prev_depth, false, false);
+            }
+
+            // Update current pattern and send it
+            self.state.pattern_config = new_pattern_cfg;
             self.try_update_app_state(true);
 
             self.send_current_pattern().await;

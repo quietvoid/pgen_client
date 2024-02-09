@@ -658,11 +658,7 @@ impl PGenApp {
 
     fn add_pattern_config_grid(&mut self, ui: &mut Ui) {
         let connected = self.state.connected_state.connected;
-        let is_dovi = self
-            .state
-            .pgen_info
-            .as_ref()
-            .is_some_and(|e| e.output_config.dynamic_range == DynamicRange::Dovi);
+        let is_dovi = self.state.is_dovi_mode();
 
         let old_limited_range = self.state.pattern_config.limited_range;
         let old_depth = self.state.pattern_config.bit_depth as u8;
