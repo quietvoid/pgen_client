@@ -658,6 +658,12 @@ impl PGenApp {
 
     fn add_pattern_config_grid(&mut self, ui: &mut Ui) {
         let connected = self.state.connected_state.connected;
+        let is_dovi = self
+            .state
+            .pgen_info
+            .as_ref()
+            .is_some_and(|e| e.output_config.dynamic_range == DynamicRange::Dovi);
+
         let old_limited_range = self.state.pattern_config.limited_range;
         let old_depth = self.state.pattern_config.bit_depth as u8;
         let old_preset_size = self.state.pattern_config.preset_size;
@@ -690,19 +696,21 @@ impl PGenApp {
                 ui.end_row();
 
                 ui.label("Patch precision");
-                egui::ComboBox::from_id_source(egui::Id::new("patch_depth_select"))
-                    .width(75.0)
-                    .selected_text(self.state.pattern_config.bit_depth.as_ref())
-                    .show_ui(ui, |ui| {
-                        for depth in BitDepth::iter() {
-                            ui.selectable_value(
-                                &mut self.state.pattern_config.bit_depth,
-                                depth,
-                                depth.as_ref(),
-                            );
-                        }
-                    });
-
+                // DoVi cannot change from 8 bit patterns
+                ui.add_enabled_ui(!is_dovi, |ui| {
+                    egui::ComboBox::from_id_source(egui::Id::new("patch_depth_select"))
+                        .width(75.0)
+                        .selected_text(self.state.pattern_config.bit_depth.as_ref())
+                        .show_ui(ui, |ui| {
+                            for depth in BitDepth::iter() {
+                                ui.selectable_value(
+                                    &mut self.state.pattern_config.bit_depth,
+                                    depth,
+                                    depth.as_ref(),
+                                );
+                            }
+                        });
+                });
                 ui.end_row();
 
                 let pattern_size_info = connected

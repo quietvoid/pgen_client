@@ -209,26 +209,26 @@ impl PGenSetConfCommand {
 
     fn base_config_for_dynamic_range(dynamic_range: DynamicRange) -> (bool, bool, bool, Vec<Self>) {
         let is_sdr = dynamic_range == DynamicRange::Sdr;
-        let is_hdr10 = dynamic_range == DynamicRange::Hdr10;
+        let is_hdr = dynamic_range == DynamicRange::Hdr;
         let is_dovi = dynamic_range == DynamicRange::Dovi;
 
         let commands = vec![
             Self::SetOutputIsSDR(is_sdr),
-            Self::SetOutputIsHDR(is_hdr10 || is_dovi),
+            Self::SetOutputIsHDR(is_hdr || is_dovi),
             Self::SetOutputIsLLDV(is_dovi),
             Self::SetOutputIsStdDovi(is_dovi),
             Self::SetDoviStatus(is_dovi),
             Self::SetDoviInterface(is_dovi),
         ];
 
-        (is_sdr, is_hdr10, is_dovi, commands)
+        (is_sdr, is_hdr, is_dovi, commands)
     }
 
     const fn default_sdr_config() -> &'static [Self] {
         &[PGenSetConfCommand::SetColorimetry(Colorimetry::Bt709Ycc)]
     }
 
-    const fn default_hdr10_config() -> &'static [Self] {
+    const fn default_hdr_config() -> &'static [Self] {
         &[
             Self::SetColorimetry(Colorimetry::Bt2020Rgb),
             Self::SetBitDepth(BitDepth::Ten),
@@ -248,14 +248,14 @@ impl PGenSetConfCommand {
     }
 
     pub fn commands_for_dynamic_range(dynamic_range: DynamicRange) -> Vec<Self> {
-        let (is_sdr, is_hdr10, is_dovi, mut commands) =
+        let (is_sdr, is_hdr, is_dovi, mut commands) =
             Self::base_config_for_dynamic_range(dynamic_range);
 
         // Set default configs
         if is_sdr {
             commands.extend(Self::default_sdr_config());
-        } else if is_hdr10 {
-            commands.extend(Self::default_hdr10_config());
+        } else if is_hdr {
+            commands.extend(Self::default_hdr_config());
         } else if is_dovi {
             // Required params for DoVi
             commands.extend(Self::dovi_config());

@@ -46,8 +46,8 @@ pub enum DynamicRange {
     #[default]
     #[strum(to_string = "SDR")]
     Sdr,
-    #[strum(to_string = "HDR10")]
-    Hdr10,
+    #[strum(to_string = "HDR")]
+    Hdr,
     #[strum(to_string = "DoVi")]
     Dovi,
 }
@@ -197,7 +197,9 @@ pub enum Primaries {
 )]
 pub enum DoviMapMode {
     #[default]
+    #[strum(to_string = "Verify / Absolute")]
     Absolute = 1,
+    #[strum(to_string = "Calibrate / Relative")]
     Relative = 2,
 }
 

@@ -43,8 +43,8 @@ Configurations:
 - `Dynamic range`: Allows switching the output mode to `SDR`, `HDR10` or `Dolby Vision`.
   - This is handled by the `PGenerator` software. The display must support the selected mode.
 
-`HDR metadata / DRM infoframe` is for the metadata signaling in HDMI for HDR output. It is only used for the `HDR(10)` mode.  
-The `HDR10` mode may also switch to `HLG` if the `HLG` EOTF is selected.
+`HDR metadata / DRM infoframe` is for the metadata signaling in HDMI for HDR output. It is only used for the `HDR` dynamic range mode.  
+The `HDR` mode can also switch to `HLG` if the `HLG` EOTF is selected.
 
 With the exception of `Display mode` and `Dynamic range` configurations:
 - All configuration changes require that the `PGenerator` software be restarted before they are applied to the output.  
@@ -58,14 +58,21 @@ With the exception of `Display mode` and `Dynamic range` configurations:
 
 Once the `PGenerator` device is properly connected, test patterns can be displayed.
 The most important settings here are:
-- `Patch precision`: Whether to use 8 bit or 10 bit patches. This is independent of the output `Bit depth` configuration.
+- `Patch precision`: Whether to use 8 bit or 10 bit patches.
+    - Changing the pattern depth may reconfigure the output to a different depth.
+    - It would be reconfigured every time a different precision pattern is sent.
 - `Patch size`: Size the patches take on the display, in % windows.
 - `Position`: How the patches are positioned on the display. This can be a preset position or specific pixel coordinates.
 
 With both internal/external pattern generators, the patches are sent at the configured size/position in `pgen_client`.
 
-If the output is configured to the `Limited` Quant range, the `Limited range` checkbox must be checked.  
-That will send patterns in limited RGB range to the `PGenerator`, ensuring correct patches are displayed.
+**Info about Quant range and the pattern limited range config**:
+- When the quant range is set to `Full`:
+    - Display may be setup with Auto/Full range. Patches must be sent as full range.
+    - Setting the display to Limited range input, patches may be sent with limited range enabled.
+- When the quant range is set to `Limited`:
+    - Patches must always be sent as full range, so Limited range must be disabled.
+    - Display must be set to Auto/Limited, never Full.
 
 For patch and background colours, they are either selected manually or through a pattern generator as described below.  
 Patterns can be sent manually to test the configuration.

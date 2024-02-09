@@ -209,6 +209,9 @@ impl PGenController {
                 .as_ref()
                 .is_some_and(|info| info.current_display_mode != valid_mode);
 
+            // Dolby Vision requires 8 bit patches
+            self.state.pattern_config.bit_depth = BitDepth::Eight;
+
             if needs_mode_switch {
                 self.change_display_mode(valid_mode, false).await;
             }
@@ -220,6 +223,7 @@ impl PGenController {
 
             // Restart for changes to apply
             self.restart_pgenerator_software(false).await;
+            self.try_update_app_state(true);
         } else {
             log::error!("Cannot set Dolby Vision, no 1080p display mode found");
         }
@@ -359,7 +363,7 @@ impl PGenController {
                 }
                 PGenGetConfCommand::GetOutputIsHDR => {
                     if cmd.parse_bool_config(res) {
-                        out_cfg.dynamic_range = DynamicRange::Hdr10;
+                        out_cfg.dynamic_range = DynamicRange::Hdr;
                     }
                 }
                 PGenGetConfCommand::GetOutputIsLLDV => {
@@ -456,7 +460,7 @@ impl PGenController {
                     }
                     PGenSetConfCommand::SetOutputIsHDR(is_hdr) => {
                         if is_hdr {
-                            pgen_info.output_config.dynamic_range = DynamicRange::Hdr10;
+                            pgen_info.output_config.dynamic_range = DynamicRange::Hdr;
                         }
                     }
                     PGenSetConfCommand::SetOutputIsLLDV(is_lldv) => {
