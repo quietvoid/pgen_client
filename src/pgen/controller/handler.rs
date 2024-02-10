@@ -249,9 +249,18 @@ impl PGenController {
             .unwrap_or_default()
     }
 
-    pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig) {
+    async fn send_pattern_from_cfg_internal(&mut self, config: PGenPatternConfig) {
+        let pattern = PGenTestPattern::from_config(self.get_color_format(), &config);
+        self.pgen_command(PGenCommand::TestPattern(pattern)).await;
+    }
+
+    pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig, update_state: bool) {
         // Only send non repeated patterns
-        if self.state.pattern_config.patch_colour != config.patch_colour {
+        let different_colour = self.state.pattern_config.patch_colour != config.patch_colour;
+        let different_bg_colour =
+            self.state.pattern_config.background_colour != config.background_colour;
+
+        if different_colour || different_bg_colour {
             let mut new_pattern_cfg = PGenPatternConfig {
                 bit_depth: config.bit_depth,
                 patch_colour: config.patch_colour,
@@ -267,17 +276,18 @@ impl PGenController {
             }
 
             // Update current pattern and send it
-            self.state.pattern_config = new_pattern_cfg;
-            self.try_update_app_state(true);
+            if update_state {
+                self.state.pattern_config = new_pattern_cfg;
+                self.try_update_app_state(true);
+            }
 
-            self.send_current_pattern().await;
+            self.send_pattern_from_cfg_internal(new_pattern_cfg).await;
         }
     }
 
     pub async fn send_current_pattern(&mut self) {
-        let pattern =
-            PGenTestPattern::from_config(self.get_color_format(), &self.state.pattern_config);
-        self.pgen_command(PGenCommand::TestPattern(pattern)).await;
+        self.send_pattern_from_cfg_internal(self.state.pattern_config)
+            .await;
     }
 
     pub async fn set_blank(&mut self) {
@@ -285,11 +295,12 @@ impl PGenController {
         config.patch_colour = Default::default();
         config.background_colour = Default::default();
 
-        self.send_pattern_from_cfg(config).await;
+        // Blank should not reset pattern config
+        self.send_pattern_from_cfg(config, false).await;
     }
 
     pub async fn send_pattern_and_wait(&mut self, config: PGenPatternConfig) {
-        self.send_pattern_from_cfg(config).await;
+        self.send_pattern_from_cfg(config, true).await;
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 

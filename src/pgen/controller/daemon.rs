@@ -42,7 +42,7 @@ async fn init_command_loop(
                     PGenControllerCmd::InitialConnect => controller.initial_connect().await,
                     PGenControllerCmd::UpdateSocket(socket_addr) => controller.update_socket(socket_addr).await,
                     PGenControllerCmd::Disconnect => controller.disconnect().await,
-                    PGenControllerCmd::TestPattern(config) => controller.send_pattern_from_cfg(config).await,
+                    PGenControllerCmd::TestPattern(config) => controller.send_pattern_from_cfg(config, true).await,
                     PGenControllerCmd::SendCurrentPattern => controller.send_current_pattern().await,
                     PGenControllerCmd::SetBlank => controller.set_blank().await,
                     PGenControllerCmd::PGen(cmd) => {
