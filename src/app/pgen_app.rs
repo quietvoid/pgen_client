@@ -17,6 +17,7 @@ use crate::pgen::pattern_config::{TestPatternPosition, TestPatternSize};
 use crate::pgen::{
     BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
 };
+use crate::spotread::SpotreadReadingConfig;
 use crate::utils::{
     compute_rgb_range, rgb_10b_to_8b, rgb_to_float, round_colour, scale_8b_rgb_to_10b,
     scale_pattern_config_rgb_values,
@@ -965,13 +966,13 @@ impl PGenApp {
         let selected_patch = self.cal_state.internal_gen.selected_patch();
 
         if let Some(patch) = selected_patch {
-            let mut config = self.state.pattern_config;
-            config.patch_colour = patch.rgb;
+            let mut pattern_cfg = self.state.pattern_config;
+            pattern_cfg.patch_colour = patch.rgb;
 
             let ref_rgb = rgb_to_float(
-                config.patch_colour,
-                config.limited_range,
-                config.bit_depth as u8,
+                pattern_cfg.patch_colour,
+                pattern_cfg.limited_range,
+                pattern_cfg.bit_depth as u8,
             );
             let ref_rgb = round_colour(ref_rgb);
 
@@ -984,9 +985,20 @@ impl PGenApp {
                 ref_rgb,
             };
 
+            let mut config = SpotreadReadingConfig {
+                target,
+                pattern_cfg,
+                pattern_insertion_cfg: self.cal_state.internal_gen.pattern_insertion_cfg,
+            };
+
+            // Only insert patterns if measuring multiple patches with auto advance
+            if !self.cal_state.internal_gen.auto_advance {
+                config.pattern_insertion_cfg.enabled = false;
+            }
+
             self.ctx
                 .external_tx
-                .try_send(ExternalJobCmd::SpotreadMeasure((config, target)))
+                .try_send(ExternalJobCmd::SpotreadMeasure(config))
                 .ok();
         }
     }

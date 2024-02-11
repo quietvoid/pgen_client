@@ -137,6 +137,17 @@ pub fn rgb_to_float(rgb: Rgb, limited_range: bool, bit_depth: u8) -> Vec3 {
     rgb.map(|c| (c - min) as f64 / real_max).into()
 }
 
+pub fn pattern_cfg_set_colour_from_float_level(config: &mut PGenPatternConfig, level: f64) {
+    let (min, real_max) = get_rgb_real_range(config.limited_range, config.bit_depth as u8);
+    let (min, real_max) = (min as f64, real_max as f64);
+    let rounded_level = (level * 1e3).round() / 1e3;
+    let rgb = [rounded_level, rounded_level, rounded_level]
+        .map(|c| ((c * real_max) + min).round() as u16);
+
+    config.patch_colour = rgb;
+    config.background_colour = rgb;
+}
+
 pub fn round_colour(rgb: Vec3) -> Vec3 {
     (rgb * 1e6).round() / 1e6
 }

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use eframe::{
     egui::{self, Context, Layout, RichText, Sense, TextEdit, Ui},
     epaint::{vec2, Color32, Stroke, Vec2},
@@ -64,6 +66,43 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                         .ok();
                 }
             });
+        });
+
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut app.cal_state.internal_gen.pattern_insertion_cfg.enabled,
+                "Full field pattern insertion",
+            );
+
+            let mut duration = app
+                .cal_state
+                .internal_gen
+                .pattern_insertion_cfg
+                .duration
+                .as_secs_f64();
+            ui.label("Duration");
+            ui.add(
+                egui::DragValue::new(&mut duration)
+                    .update_while_editing(false)
+                    .suffix(" s")
+                    .max_decimals(2)
+                    .speed(0.01)
+                    .clamp_range(0.5..=10.0),
+            );
+            app.cal_state.internal_gen.pattern_insertion_cfg.duration =
+                Duration::from_secs_f64(duration);
+
+            let mut level = app.cal_state.internal_gen.pattern_insertion_cfg.level * 100.0;
+            ui.label("Level");
+            ui.add(
+                egui::DragValue::new(&mut level)
+                    .update_while_editing(false)
+                    .suffix(" %")
+                    .max_decimals(2)
+                    .speed(0.1)
+                    .clamp_range(0.0..=100.0),
+            );
+            app.cal_state.internal_gen.pattern_insertion_cfg.level = level / 100.0;
         });
 
         ui.separator();

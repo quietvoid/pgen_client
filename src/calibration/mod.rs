@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use deltae::LabValue;
 use kolor_64::{ColorSpace, Vec3};
 use serde::{Deserialize, Serialize};
@@ -33,6 +35,13 @@ pub enum TargetColorspace {
     DisplayP3,
     #[strum(to_string = "Rec. 2020")]
     Rec2020,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub struct PatternInsertionConfig {
+    pub enabled: bool,
+    pub duration: Duration,
+    pub level: f64,
 }
 
 pub const RGB_PRIMARIES: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -71,6 +80,16 @@ impl Default for CalibrationTarget {
             colorspace: Default::default(),
             eotf: Default::default(),
             ref_rgb: Default::default(),
+        }
+    }
+}
+
+impl Default for PatternInsertionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: Default::default(),
+            duration: Duration::from_secs(5),
+            level: 0.15,
         }
     }
 }

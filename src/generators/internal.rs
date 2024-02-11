@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
 use crate::{
-    calibration::{ReadingResult, RGB_PRIMARIES, RGB_SECONDARIES},
+    calibration::{PatternInsertionConfig, ReadingResult, RGB_PRIMARIES, RGB_SECONDARIES},
     pgen::pattern_config::PGenPatternConfig,
     utils::{get_rgb_real_range, Rgb},
 };
@@ -13,6 +13,7 @@ pub struct InternalGenerator {
     pub started: bool,
     pub auto_advance: bool,
     pub preset: PatchListPreset,
+    pub pattern_insertion_cfg: PatternInsertionConfig,
 
     /// Patch list
     pub list: Vec<InternalPattern>,

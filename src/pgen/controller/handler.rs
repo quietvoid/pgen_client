@@ -309,9 +309,9 @@ impl PGenController {
         self.send_pattern_from_cfg_internal(config, false).await;
     }
 
-    pub async fn send_pattern_and_wait(&mut self, config: PGenPatternConfig) {
+    pub async fn send_pattern_and_wait(&mut self, config: PGenPatternConfig, duration: Duration) {
         self.send_pattern_from_cfg(config).await;
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(duration).await;
     }
 
     pub fn parse_multiple_get_conf_commands_res(&mut self, res: Vec<(PGenGetConfCommand, String)>) {

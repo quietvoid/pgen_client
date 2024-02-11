@@ -29,10 +29,10 @@ tokio-stream = "0.1.14"
 futures = "0.3.30"
 async-stream = "0.3.5"
 
-eframe = { version = "0.26.0", features = ["persistence"] }
-egui_extras = "0.26.0"
-egui_plot = "0.26.0"
-ecolor = "0.26.0"
+eframe = { version = "0.26.1", features = ["persistence"] }
+egui_extras = "0.26.1"
+egui_plot = "0.26.1"
+ecolor = "0.26.1"
 kolor-64 = "0.1.9"
 deltae = "0.3.2"
 

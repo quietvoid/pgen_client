@@ -11,11 +11,13 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     app::PGenAppUpdate,
-    calibration::{CalibrationTarget, ReadingResult},
+    calibration::{CalibrationTarget, PatternInsertionConfig, ReadingResult},
     external::ExternalJobCmd,
     pgen::{controller::PGenControllerHandle, pattern_config::PGenPatternConfig},
+    utils::pattern_cfg_set_colour_from_float_level,
 };
 
+#[derive(Debug)]
 struct SpotreadProc {
     child: Child,
     err_lines: Lines<BufReader<ChildStderr>>,
@@ -28,9 +30,17 @@ struct SpotreadProc {
     app_tx: Sender<PGenAppUpdate>,
 }
 
+#[derive(Debug)]
 pub enum SpotreadCmd {
-    DoReading((PGenPatternConfig, CalibrationTarget)),
+    DoReading(SpotreadReadingConfig),
     Exit,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SpotreadReadingConfig {
+    pub target: CalibrationTarget,
+    pub pattern_cfg: PGenPatternConfig,
+    pub pattern_insertion_cfg: PatternInsertionConfig,
 }
 
 pub fn start_spotread_worker(
@@ -90,10 +100,23 @@ pub fn start_spotread_worker(
                 }
                 msg = rx.select_next_some() => {
                     match msg {
-                        SpotreadCmd::DoReading((config, target)) => {
+                        SpotreadCmd::DoReading(SpotreadReadingConfig { target, pattern_cfg, pattern_insertion_cfg }) => {
                             {
                                 let mut controller = controller_handle.lock().await;
-                                controller.send_pattern_and_wait(config).await;
+
+                                let wait_duration = if pattern_insertion_cfg.enabled {
+                                    let mut inserted_pattern_cfg = pattern_cfg;
+                                    pattern_cfg_set_colour_from_float_level(&mut inserted_pattern_cfg, pattern_insertion_cfg.level);
+
+                                    controller.send_pattern_and_wait(inserted_pattern_cfg, pattern_insertion_cfg.duration).await;
+
+                                    // Leave more time for the display to adjust after inserted pattern
+                                    Duration::from_secs_f64(1.5)
+                                } else {
+                                    Duration::from_secs_f64(0.5)
+                                };
+
+                                controller.send_pattern_and_wait(pattern_cfg, wait_duration).await;
                             }
 
                             let res = tokio::time::timeout(Duration::from_secs(20), spotread_proc.try_measure(target)).await;

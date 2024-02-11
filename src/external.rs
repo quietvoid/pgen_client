@@ -4,15 +4,11 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use crate::{
     app::{PGenAppUpdate, ReadFileType},
-    calibration::CalibrationTarget,
     generators::{
         start_tcp_generator_client, GeneratorClient, GeneratorClientCmd, GeneratorInterface,
     },
-    pgen::{
-        controller::{PGenControllerCmd, PGenControllerHandle},
-        pattern_config::PGenPatternConfig,
-    },
-    spotread::{start_spotread_worker, SpotreadCmd},
+    pgen::controller::{PGenControllerCmd, PGenControllerHandle},
+    spotread::{start_spotread_worker, SpotreadCmd, SpotreadReadingConfig},
 };
 
 #[derive(Debug, Clone)]
@@ -23,7 +19,7 @@ pub enum ExternalJobCmd {
     // spotread
     StartSpotreadProcess(Vec<(String, Option<String>)>),
     StopSpotreadProcess,
-    SpotreadMeasure((PGenPatternConfig, CalibrationTarget)),
+    SpotreadMeasure(SpotreadReadingConfig),
     SpotreadDoneMeasuring,
 
     ReadFile(ReadFileType),
@@ -97,9 +93,9 @@ pub fn start_external_jobs_worker(
                                 }
                                 app_tx.try_send(PGenAppUpdate::DoneProcessing).ok();
                             }
-                            ExternalJobCmd::SpotreadMeasure(info) => {
+                            ExternalJobCmd::SpotreadMeasure(config) => {
                                 if let Some(spotread_tx) = spotread_tx.as_ref() {
-                                    spotread_tx.try_send(SpotreadCmd::DoReading(info)).ok();
+                                    spotread_tx.try_send(SpotreadCmd::DoReading(config)).ok();
                                 }
                             }
                             ExternalJobCmd::SpotreadDoneMeasuring => {
