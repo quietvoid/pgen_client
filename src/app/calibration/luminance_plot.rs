@@ -53,7 +53,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, cal_state: &Calib
         .map(|i| {
             let fraction = i as f64 / max_f;
             let (x, y) = if let Some(nits_scale) = nits_scale {
-                let mut y = target_eotf.value_bpc(0.0, fraction, oetf, false);
+                let mut y = target_eotf.value(fraction, oetf);
                 if !oetf {
                     y *= nits_scale;
                 }

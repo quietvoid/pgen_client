@@ -165,22 +165,25 @@ impl ReadingResult {
         target_rgb_to_xyz: ColorConversion,
         scale_to_y: bool,
     ) -> Vec3 {
-        let ref_rgb = self
-            .target
-            .eotf
-            .convert_vec(self.ref_rgb_linear_bpc(), false);
-
-        let xyz = target_rgb_to_xyz.convert(ref_rgb);
-
-        // Scale Y to measured peak if not PQ
-        let max_y = if self.target.eotf == LuminanceEotf::PQ {
-            self.target.max_hdr_mdl
+        let is_pq = self.target.eotf == LuminanceEotf::PQ;
+        let ref_rgb_clipped = if is_pq {
+            // Clip to MDL PQ code, since ref display is expected to clip
+            let max_pq = self.target.eotf.oetf(self.target.max_hdr_mdl / 10_000.0);
+            self.target.ref_rgb.min(Vec3::new(max_pq, max_pq, max_pq))
         } else {
-            self.target.max_y
+            self.ref_rgb_linear_bpc()
         };
 
-        if scale_to_y {
-            xyz * max_y
+        let mut ref_rgb = self.target.eotf.convert_vec(ref_rgb_clipped, false);
+
+        // To nits
+        if is_pq {
+            ref_rgb *= 10_000.0;
+        }
+
+        let xyz = target_rgb_to_xyz.convert(ref_rgb);
+        if !is_pq && scale_to_y {
+            xyz * self.target.max_y
         } else {
             xyz
         }
@@ -255,7 +258,16 @@ impl ReadingResult {
 
 #[cfg(test)]
 mod tests {
-    use kolor_64::{spaces::CIE_XYZ, ColorConversion, Vec3};
+    use kolor_64::{
+        details::{color::WhitePoint, transform::XYZ_to_xyY},
+        spaces::CIE_XYZ,
+        ColorConversion, Vec3,
+    };
+
+    use crate::{
+        calibration::{LuminanceEotf, TargetColorspace},
+        utils::round_colour,
+    };
 
     use super::{CalibrationTarget, ReadingResult};
 
@@ -440,5 +452,53 @@ mod tests {
 
         assert_eq!(*de2000.value(), 0.91667163);
         assert_eq!(*de2000_incl_lum.value(), 2.0169756);
+    }
+
+    #[test]
+    fn test_ref_xyz_pq_absolute() {
+        let target = CalibrationTarget {
+            min_y: 0.0,
+            max_y: 800.0,
+            max_hdr_mdl: 1000.0,
+            ref_rgb: Vec3::new(0.5, 0.5, 0.5),
+            colorspace: TargetColorspace::DisplayP3,
+            eotf: LuminanceEotf::PQ,
+        };
+
+        let xyz = Vec3::new(95.41516, 100.072455, 108.983916);
+        let argyll_lab = Vec3::new(100.028009, -1.864209, -19.408698);
+        let reading = ReadingResult::from_argyll_results(target, xyz, argyll_lab);
+
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+
+        let target_xyz = round_colour(reading.ref_xyz_display_space(target_rgb_to_xyz, true));
+        let target_xyy = round_colour(XYZ_to_xyY(target_xyz, WhitePoint::D65));
+
+        assert_eq!(target_xyz, Vec3::new(87.676779, 92.245709, 100.439895));
+        assert_eq!(target_xyy, Vec3::new(0.312727, 0.329023, 92.245709));
+    }
+
+    #[test]
+    fn test_ref_xyz_pq_clip_max() {
+        let target = CalibrationTarget {
+            min_y: 0.0,
+            max_y: 800.0,
+            max_hdr_mdl: 800.0,
+            ref_rgb: Vec3::new(0.950147, 0.950147, 0.950147),
+            colorspace: TargetColorspace::DisplayP3,
+            eotf: LuminanceEotf::PQ,
+        };
+
+        let xyz = Vec3::new(754.483535, 793.981817, 864.330001);
+        let argyll_lab = Vec3::new(215.416777, -4.833889, -38.650394);
+        let reading = ReadingResult::from_argyll_results(target, xyz, argyll_lab);
+
+        let target_rgb_to_xyz = ColorConversion::new(target.colorspace.to_kolor(), CIE_XYZ);
+
+        let target_xyz = round_colour(reading.ref_xyz_display_space(target_rgb_to_xyz, true));
+        let target_xyy = round_colour(XYZ_to_xyY(target_xyz, WhitePoint::D65));
+
+        assert_eq!(target_xyz, Vec3::new(760.376, 800.0, 871.064));
+        assert_eq!(target_xyy, Vec3::new(0.312727, 0.329023, 800.0));
     }
 }
