@@ -25,17 +25,14 @@ pub fn draw_luminance_plot(
 
     if cal_state.show_luminance_plot {
         let min = cal_state.min_normalized();
-        draw_plot(ui, results, min, cal_state.eotf, cal_state.oetf);
+        draw_plot(ui, results, min, cal_state);
     }
 }
 
-fn draw_plot(
-    ui: &mut Ui,
-    results: &[ReadingResult],
-    min: f64,
-    target_eotf: LuminanceEotf,
-    oetf: bool,
-) {
+fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, cal_state: &CalibrationState) {
+    let target_eotf = cal_state.eotf;
+    let oetf = cal_state.oetf;
+
     let dark_mode = ui.ctx().style().visuals.dark_mode;
     let ref_color = if dark_mode {
         Color32::GRAY
@@ -48,13 +45,25 @@ fn draw_plot(
         Color32::from_rgb(255, 153, 0)
     };
 
-    let precision: u32 = 10;
+    let nits_scale = (target_eotf == LuminanceEotf::PQ).then(|| 10_000.0 / cal_state.max_hdr_mdl);
+    let precision: u32 = 8;
     let max = 2_u32.pow(precision);
     let max_f = max as f64;
     let ref_points: Vec<[f64; 2]> = (0..max)
         .map(|i| {
-            let x = i as f64 / max_f;
-            [x, target_eotf.value_bpc(min, x, oetf, false)]
+            let fraction = i as f64 / max_f;
+            let (x, y) = if let Some(nits_scale) = nits_scale {
+                let mut y = target_eotf.value_bpc(0.0, fraction, oetf, false);
+                if !oetf {
+                    y *= nits_scale;
+                }
+
+                (fraction, y.min(1.0))
+            } else {
+                (fraction, target_eotf.value_bpc(min, fraction, oetf, false))
+            };
+
+            [x, y]
         })
         .collect();
 

@@ -104,7 +104,12 @@ impl ReadingResult {
 
     pub fn luminance(&self, oetf: bool) -> f64 {
         let target_eotf = self.target.eotf;
-        let (min_y, max_y) = (self.target.min_y, self.target.max_y);
+        let (min_y, max_y) = if target_eotf == LuminanceEotf::PQ {
+            (0.0, self.target.max_hdr_mdl)
+        } else {
+            (self.target.min_y, self.target.max_y)
+        };
+
         let y = self.xyy[2] / max_y;
 
         if oetf {
@@ -167,9 +172,15 @@ impl ReadingResult {
 
         let xyz = target_rgb_to_xyz.convert(ref_rgb);
 
+        // Scale Y to measured peak if not PQ
+        let max_y = if self.target.eotf == LuminanceEotf::PQ {
+            self.target.max_hdr_mdl
+        } else {
+            self.target.max_y
+        };
+
         if scale_to_y {
-            // Scale Y to measured peak
-            xyz * self.target.max_y
+            xyz * max_y
         } else {
             xyz
         }

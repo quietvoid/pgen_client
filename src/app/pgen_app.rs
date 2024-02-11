@@ -981,6 +981,7 @@ impl PGenApp {
                 max_y: self.cal_state.max_y,
                 eotf: self.cal_state.eotf,
                 colorspace: self.cal_state.target_csp,
+                max_hdr_mdl: self.cal_state.max_hdr_mdl,
 
                 ref_rgb,
             };

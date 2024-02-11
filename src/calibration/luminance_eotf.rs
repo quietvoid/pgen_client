@@ -30,7 +30,9 @@ impl LuminanceEotf {
     }
 
     pub fn value_bpc(&self, min: f64, v: f64, oetf: bool, linear_min: bool) -> f64 {
-        let min = if linear_min {
+        let min = if *self == Self::PQ {
+            0.0
+        } else if linear_min {
             min
         } else {
             // Decode min to linear

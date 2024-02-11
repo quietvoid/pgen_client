@@ -36,6 +36,7 @@ pub struct CalibrationState {
 
     pub min_y: f64,
     pub max_y: f64,
+    pub max_hdr_mdl: f64,
 
     // Luminance calibration
     pub eotf: LuminanceEotf,
@@ -141,6 +142,7 @@ impl CalibrationState {
             .for_each(|res| {
                 res.target.min_y = self.min_y;
                 res.target.max_y = self.max_y;
+                res.target.max_hdr_mdl = self.max_hdr_mdl;
                 res.target.eotf = self.eotf;
                 res.target.colorspace = self.target_csp;
 
@@ -162,6 +164,7 @@ impl Default for CalibrationState {
 
             min_y: Default::default(),
             max_y: 100.0,
+            max_hdr_mdl: 1000.0,
             target_csp: Default::default(),
             eotf: LuminanceEotf::Gamma22,
             oetf: true,

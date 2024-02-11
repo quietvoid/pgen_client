@@ -19,6 +19,7 @@ pub struct CalibrationTarget {
     pub max_y: f64,
     pub colorspace: TargetColorspace,
     pub eotf: LuminanceEotf,
+    pub max_hdr_mdl: f64,
 
     // Linear
     pub ref_rgb: Vec3,
@@ -77,6 +78,7 @@ impl Default for CalibrationTarget {
         Self {
             min_y: Default::default(),
             max_y: 100.0,
+            max_hdr_mdl: 1000.0,
             colorspace: Default::default(),
             eotf: Default::default(),
             ref_rgb: Default::default(),
