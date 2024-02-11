@@ -5,7 +5,7 @@ use crate::utils::Rgb;
 
 use super::BitDepth;
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PGenPatternConfig {
     pub limited_range: bool,
     pub bit_depth: BitDepth,
@@ -57,21 +57,6 @@ pub enum TestPatternSize {
     Percent100,
 }
 
-impl Default for PGenPatternConfig {
-    fn default() -> Self {
-        Self {
-            limited_range: false,
-            position: (0, 0),
-            patch_size: (0, 0),
-            bit_depth: BitDepth::Ten,
-            patch_colour: [128, 128, 128],
-            background_colour: [0, 0, 0],
-            preset_position: Default::default(),
-            preset_size: Default::default(),
-        }
-    }
-}
-
 impl TestPatternPosition {
     pub fn compute_position(&self, width: u16, height: u16, patch_size: (u16, u16)) -> (u16, u16) {
         match self {
@@ -114,5 +99,20 @@ impl TestPatternSize {
             (scale * width).round() as u16,
             (scale * height).round() as u16,
         )
+    }
+}
+
+impl Default for PGenPatternConfig {
+    fn default() -> Self {
+        Self {
+            limited_range: false,
+            position: (0, 0),
+            patch_size: (0, 0),
+            bit_depth: BitDepth::Ten,
+            patch_colour: [128, 128, 128],
+            background_colour: [0, 0, 0],
+            preset_position: Default::default(),
+            preset_size: Default::default(),
+        }
     }
 }

@@ -88,6 +88,8 @@ pub(crate) fn handle_spotread_result(app: &mut PGenApp, result: Option<ReadingRe
         let last_idx = internal_gen.list.len() - 1;
         let can_advance =
             internal_gen.auto_advance && internal_gen.selected_idx.is_some_and(|i| i < last_idx);
+        let continuous_selected =
+            !internal_gen.auto_advance && internal_gen.read_selected_continuously;
 
         let idx = can_advance
             .then_some(internal_gen.selected_idx.as_mut())
@@ -96,7 +98,8 @@ pub(crate) fn handle_spotread_result(app: &mut PGenApp, result: Option<ReadingRe
             *idx += 1;
         }
 
-        if can_advance {
+        // Keep going if it wasn't stopped manually
+        if internal_gen.started && (can_advance || continuous_selected) {
             app.calibration_send_measure_selected_patch();
         } else {
             internal_gen.started = false;

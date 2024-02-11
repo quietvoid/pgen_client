@@ -323,6 +323,7 @@ fn add_patches_info_right_side(app: &mut PGenApp, ui: &mut Ui) {
             && !cal_started
             && !internal_gen.list.is_empty()
     };
+    let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
 
     ui.horizontal(|ui| {
         ui.add_enabled_ui(can_read_patches, |ui| {
@@ -336,17 +337,30 @@ fn add_patches_info_right_side(app: &mut PGenApp, ui: &mut Ui) {
 
                 app.calibration_send_measure_selected_patch();
             }
+            if has_selected_patch {
+                if ui.button("Measure selected patch").clicked() {
+                    let internal_gen = &mut app.cal_state.internal_gen;
+                    internal_gen.started = true;
+                    internal_gen.auto_advance = false;
 
-            let has_selected_patch = app.cal_state.internal_gen.selected_idx.is_some();
-            if has_selected_patch && ui.button("Measure selected patch").clicked() {
-                let internal_gen = &mut app.cal_state.internal_gen;
-                internal_gen.started = true;
-                internal_gen.auto_advance = false;
-
-                app.calibration_send_measure_selected_patch();
+                    app.calibration_send_measure_selected_patch();
+                }
+                ui.checkbox(
+                    &mut app.cal_state.internal_gen.read_selected_continuously,
+                    "Continuous",
+                );
             }
         });
     });
+
+    let can_keep_reading = app.cal_state.internal_gen.auto_advance
+        || app.cal_state.internal_gen.read_selected_continuously;
+    let show_stop_btn = cal_started && can_keep_reading;
+    if show_stop_btn && ui.button("Stop measuring").clicked() {
+        let internal_gen = &mut app.cal_state.internal_gen;
+        internal_gen.started = false;
+        internal_gen.auto_advance = false;
+    }
 
     let has_selected_patch_result = app
         .cal_state

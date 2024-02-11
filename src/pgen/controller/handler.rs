@@ -25,6 +25,7 @@ pub type PGenControllerHandle = Arc<Mutex<PGenController>>;
 pub struct PGenController {
     pub ctx: PGenControllerContext,
     pub state: PGenControllerState,
+    pub previous_cfg: Option<PGenPatternConfig>,
 }
 
 impl PGenController {
@@ -38,7 +39,11 @@ impl PGenController {
             egui_ctx: Default::default(),
         };
 
-        Self { ctx, state }
+        Self {
+            ctx,
+            state,
+            previous_cfg: None,
+        }
     }
 
     pub async fn set_initial_state(&mut self, state: PGenControllerState) {
@@ -249,44 +254,49 @@ impl PGenController {
             .unwrap_or_default()
     }
 
-    async fn send_pattern_from_cfg_internal(&mut self, config: PGenPatternConfig) {
-        let pattern = PGenTestPattern::from_config(self.get_color_format(), &config);
-        self.pgen_command(PGenCommand::TestPattern(pattern)).await;
-    }
-
-    pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig, update_state: bool) {
+    async fn send_pattern_from_cfg_internal(
+        &mut self,
+        config: PGenPatternConfig,
+        update_state: bool,
+    ) {
         // Only send non repeated patterns
-        let different_colour = self.state.pattern_config.patch_colour != config.patch_colour;
-        let different_bg_colour =
-            self.state.pattern_config.background_colour != config.background_colour;
+        let different_pattern = self.previous_cfg.map(|prev| prev != config).unwrap_or(true);
 
-        if different_colour || different_bg_colour {
-            let mut new_pattern_cfg = PGenPatternConfig {
-                bit_depth: config.bit_depth,
-                patch_colour: config.patch_colour,
-                background_colour: config.background_colour,
-                ..self.state.pattern_config
-            };
-
-            if self.state.is_dovi_mode() && new_pattern_cfg.bit_depth != BitDepth::Eight {
-                // Ensure DoVi patterns are 8 bit
-                let prev_depth = new_pattern_cfg.bit_depth as u8;
-
-                scale_pattern_config_rgb_values(&mut new_pattern_cfg, 8, prev_depth, false, false);
-            }
+        if different_pattern {
+            self.previous_cfg.replace(config);
 
             // Update current pattern and send it
             if update_state {
-                self.state.pattern_config = new_pattern_cfg;
+                self.state.pattern_config = config;
                 self.try_update_app_state(true);
             }
 
-            self.send_pattern_from_cfg_internal(new_pattern_cfg).await;
+            let pattern = PGenTestPattern::from_config(self.get_color_format(), &config);
+            self.pgen_command(PGenCommand::TestPattern(pattern)).await;
         }
     }
 
+    pub async fn send_pattern_from_cfg(&mut self, config: PGenPatternConfig) {
+        let mut new_pattern_cfg = PGenPatternConfig {
+            bit_depth: config.bit_depth,
+            patch_colour: config.patch_colour,
+            background_colour: config.background_colour,
+            ..self.state.pattern_config
+        };
+
+        if self.state.is_dovi_mode() && new_pattern_cfg.bit_depth != BitDepth::Eight {
+            // Ensure DoVi patterns are 8 bit
+            let prev_depth = new_pattern_cfg.bit_depth as u8;
+
+            scale_pattern_config_rgb_values(&mut new_pattern_cfg, 8, prev_depth, false, false);
+        }
+
+        self.send_pattern_from_cfg_internal(new_pattern_cfg, true)
+            .await;
+    }
+
     pub async fn send_current_pattern(&mut self) {
-        self.send_pattern_from_cfg_internal(self.state.pattern_config)
+        self.send_pattern_from_cfg_internal(self.state.pattern_config, false)
             .await;
     }
 
@@ -296,11 +306,11 @@ impl PGenController {
         config.background_colour = Default::default();
 
         // Blank should not reset pattern config
-        self.send_pattern_from_cfg(config, false).await;
+        self.send_pattern_from_cfg_internal(config, false).await;
     }
 
     pub async fn send_pattern_and_wait(&mut self, config: PGenPatternConfig) {
-        self.send_pattern_from_cfg(config, true).await;
+        self.send_pattern_from_cfg(config).await;
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
 

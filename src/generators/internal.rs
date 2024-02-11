@@ -18,6 +18,7 @@ pub struct InternalGenerator {
     pub list: Vec<InternalPattern>,
     /// Selected patch from list
     pub selected_idx: Option<usize>,
+    pub read_selected_continuously: bool,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -38,7 +39,7 @@ pub enum PatchListPreset {
     Primaries,
     Secondaries,
 
-    #[strum(to_string = "22 pts greyscale")]
+    #[strum(to_string = "23 pts greyscale")]
     Greyscale,
     #[strum(to_string = "Saturation sweep")]
     SaturationSweep,
