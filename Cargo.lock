@@ -2660,6 +2660,7 @@ dependencies = [
  "strum",
  "tokio",
  "tokio-stream",
+ "winapi",
  "yaserde",
 ]
 

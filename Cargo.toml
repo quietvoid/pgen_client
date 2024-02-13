@@ -36,6 +36,10 @@ ecolor = "0.26.1"
 kolor-64 = "0.1.9"
 deltae = "0.3.2"
 
+# Temporary to build Windows, see https://github.com/emilk/egui/pull/4037
+[target.'cfg(any(target_os = "windows"))'.dependencies]
+winapi = { version = "0.3.9", features = ["winuser"] }
+
 [profile.release]
 opt-level = 3
 strip = true
