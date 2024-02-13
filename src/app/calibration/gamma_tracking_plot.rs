@@ -38,13 +38,20 @@ pub fn draw_gamma_tracking_plot(
     });
 
     if cal_state.show_gamma_plot {
-        let min = cal_state.min_normalized();
-        draw_plot(ui, results, min, cal_state.eotf);
+        draw_plot(ui, results, cal_state);
     }
 }
 
-fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: LuminanceEotf) {
+fn draw_plot(ui: &mut Ui, results: &[ReadingResult], cal_state: &CalibrationState) {
+    let min = cal_state.min_normalized();
+    let target_eotf = cal_state.eotf;
+
     let dark_mode = ui.ctx().style().visuals.dark_mode;
+    let ref_pq_color = if dark_mode {
+        Color32::GRAY
+    } else {
+        Color32::DARK_GRAY
+    };
     let ref_color = if dark_mode {
         Color32::from_rgb(0, 255, 255)
     } else {
@@ -56,6 +63,14 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: Lumi
         Color32::from_rgb(255, 153, 0)
     };
 
+    let is_pq = target_eotf == LuminanceEotf::PQ;
+    let max_pq = is_pq.then(|| target_eotf.oetf(cal_state.max_hdr_mdl / 10_000.0));
+    let ref_pq_line = is_pq.then(|| {
+        Line::new(vec![[0.0, 0.0], [1.0, 1.0]])
+            .color(ref_pq_color)
+            .style(egui_plot::LineStyle::Dashed { length: 10.0 })
+    });
+
     let precision: u32 = 8;
     let max = 2_u32.pow(precision);
     let max_f = max as f64;
@@ -63,8 +78,12 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: Lumi
         .filter_map(|i| {
             let x = i as f64 / max_f;
             if x > 0.01 {
-                let v_out = target_eotf.value_bpc(min, x, false, false);
-                let y = target_eotf.gamma_around_zero(x, v_out);
+                let y = if let Some(max_pq) = max_pq {
+                    x.min(max_pq)
+                } else {
+                    let v_out = target_eotf.value_bpc(min, x, false, false);
+                    target_eotf.gamma_around_zero(x, v_out)
+                };
 
                 Some([x, y])
             } else {
@@ -80,7 +99,11 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: Lumi
         .filter(|res| res.is_white_stimulus_reading() && res.not_zero_or_one_rgb())
         .map(|res| {
             let x = res.target.ref_rgb[0];
-            let y = res.gamma_around_zero().unwrap();
+            let y = if is_pq {
+                target_eotf.oetf(res.xyz.y / 10_000.0)
+            } else {
+                res.gamma_around_zero().unwrap()
+            };
 
             [x, y]
         })
@@ -95,28 +118,37 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, target_eotf: Lumi
         .color(lum_color)
         .highlight(true);
 
-    let gamma_mean = target_eotf.mean();
-    let gamma_fmt = move |mark: GridMark, _max_digits, _range: &RangeInclusive<f64>| {
-        format!("{:.3}", mark.value + gamma_mean)
-    };
-    let gamma_label_fmt = move |_s: &str, point: &PlotPoint| {
-        format!("x = {:.4}\ny = {:.4}", point.x, point.y + gamma_mean)
-    };
-
-    Plot::new("gamma_tracking_plot")
+    let mut plot = Plot::new("gamma_tracking_plot")
         .view_aspect(2.0)
         .show_background(false)
         .allow_scroll(false)
-        .clamp_grid(true)
-        .y_axis_formatter(gamma_fmt)
-        .label_formatter(gamma_label_fmt)
-        .y_grid_spacer(egui_plot::uniform_grid_spacer(move |_| {
-            [0.025, 0.075, gamma_mean.round() * 0.1]
-        }))
-        .show(ui, |plot_ui| {
-            plot_ui.line(ref_line);
+        .clamp_grid(true);
 
-            plot_ui.line(lum_line);
-            plot_ui.points(lum_markers);
-        });
+    if !is_pq {
+        let gamma_mean = target_eotf.mean();
+        let gamma_fmt = move |mark: GridMark, _max_digits, _range: &RangeInclusive<f64>| {
+            format!("{:.3}", mark.value + gamma_mean)
+        };
+        let gamma_label_fmt = move |_s: &str, point: &PlotPoint| {
+            format!("x = {:.4}\ny = {:.4}", point.x, point.y + gamma_mean)
+        };
+
+        plot = plot
+            .y_axis_formatter(gamma_fmt)
+            .label_formatter(gamma_label_fmt)
+            .y_grid_spacer(egui_plot::uniform_grid_spacer(move |_| {
+                [0.025, 0.075, gamma_mean.round() * 0.1]
+            }));
+    }
+
+    plot.show(ui, |plot_ui| {
+        if let Some(ref_pq_line) = ref_pq_line {
+            plot_ui.line(ref_pq_line);
+        }
+
+        plot_ui.line(ref_line);
+
+        plot_ui.line(lum_line);
+        plot_ui.points(lum_markers);
+    });
 }

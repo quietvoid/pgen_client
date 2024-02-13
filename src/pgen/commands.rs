@@ -65,6 +65,8 @@ pub enum PGenGetConfCommand {
     GetOutputIsLLDV,
     #[strum(to_string = "GET_PGENERATOR_CONF_IS_STD_DOVI")]
     GetOutputIsStdDovi,
+    #[strum(to_string = "GET_PGENERATOR_CONF_DV_MAP_MODE")]
+    GetDoviMapMode,
 
     // HDR metadata infoframe
     #[strum(to_string = "GET_PGENERATOR_CONF_EOTF")]
@@ -143,6 +145,7 @@ impl PGenGetConfCommand {
             Self::GetOutputIsHDR,
             Self::GetOutputIsLLDV,
             Self::GetOutputIsStdDovi,
+            Self::GetDoviMapMode,
             Self::GetHdrEotf,
             Self::GetHdrPrimaries,
             Self::GetHdrMaxMdl,

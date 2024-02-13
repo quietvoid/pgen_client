@@ -196,9 +196,9 @@ pub enum Primaries {
     FromRepr,
 )]
 pub enum DoviMapMode {
-    #[default]
     #[strum(to_string = "Verify / Absolute")]
     Absolute = 1,
+    #[default]
     #[strum(to_string = "Calibrate / Relative")]
     Relative = 2,
 }

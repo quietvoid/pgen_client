@@ -14,7 +14,7 @@ use crate::pgen::{
     commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand},
     ColorFormat, DynamicRange,
 };
-use crate::pgen::{BitDepth, Colorimetry, HdrEotf, Primaries, QuantRange};
+use crate::pgen::{BitDepth, Colorimetry, DoviMapMode, HdrEotf, Primaries, QuantRange};
 use crate::utils::scale_pattern_config_rgb_values;
 
 use super::{DisplayMode, PGenControllerContext, PGenControllerState};
@@ -405,6 +405,14 @@ impl PGenController {
                 PGenGetConfCommand::GetOutputIsStdDovi => {
                     if cmd.parse_bool_config(res) {
                         out_cfg.dynamic_range = DynamicRange::Dovi;
+                    }
+                }
+                PGenGetConfCommand::GetDoviMapMode => {
+                    if let Some(dovi_map_mode) = cmd
+                        .parse_number_config(res)
+                        .and_then(DoviMapMode::from_repr)
+                    {
+                        out_cfg.dovi_map_mode = dovi_map_mode;
                     }
                 }
                 PGenGetConfCommand::GetHdrEotf => {

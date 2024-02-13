@@ -23,7 +23,12 @@ impl LuminanceEotf {
 
     pub fn value(&self, v: f64, oetf: bool) -> f64 {
         if oetf {
-            self.oetf(v)
+            if *self == Self::PQ {
+                // PQ 0-1
+                v
+            } else {
+                self.oetf(v)
+            }
         } else {
             self.eotf(v)
         }

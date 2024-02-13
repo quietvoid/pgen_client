@@ -110,11 +110,16 @@ impl ReadingResult {
             (self.target.min_y, self.target.max_y)
         };
 
-        let y = self.xyy[2] / max_y;
-
         if oetf {
-            target_eotf.oetf(target_eotf.value(y, true))
+            if target_eotf == LuminanceEotf::PQ {
+                // PQ code
+                target_eotf.oetf(self.xyy[2] / 10_000.0)
+            } else {
+                target_eotf.oetf(target_eotf.value(self.xyy[2] / max_y, true))
+            }
         } else {
+            let y = self.xyy[2] / max_y;
+
             // Y, minY and maxY are all in display-gamma space
             // And we convert them to linear luminance, so min needs to be decoded to linear
             let min = target_eotf.oetf(min_y / max_y);

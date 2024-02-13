@@ -119,7 +119,7 @@ pub fn start_spotread_worker(
                                 controller.send_pattern_and_wait(pattern_cfg, wait_duration).await;
                             }
 
-                            let res = tokio::time::timeout(Duration::from_secs(20), spotread_proc.try_measure(target)).await;
+                            let res = tokio::time::timeout(Duration::from_secs(30), spotread_proc.try_measure(target)).await;
 
                             let mut success = false;
                             match res {
