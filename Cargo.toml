@@ -29,16 +29,12 @@ tokio-stream = "0.1.14"
 futures = "0.3.30"
 async-stream = "0.3.5"
 
-eframe = { version = "0.26.1", features = ["persistence"] }
-egui_extras = "0.26.1"
-egui_plot = "0.26.1"
-ecolor = "0.26.1"
+eframe = { version = "0.26.2", features = ["persistence"] }
+egui_extras = "0.26.2"
+egui_plot = "0.26.2"
+ecolor = "0.26.2"
 kolor-64 = "0.1.9"
 deltae = "0.3.2"
-
-# Temporary to build Windows, see https://github.com/emilk/egui/pull/4037
-[target.'cfg(any(target_os = "windows"))'.dependencies]
-winapi = { version = "0.3.9", features = ["winuser"] }
 
 [profile.release]
 opt-level = 3

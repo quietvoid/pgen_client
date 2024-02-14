@@ -315,7 +315,7 @@ fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui, avail_height: f32) {
         .column(patch_col)
         .column(patch_col)
         .resizable(true)
-        .min_scrolled_height(avail_height - 25.0)
+        .min_scrolled_height(300.0_f32.max(avail_height - 25.0))
         .sense(Sense::click())
         .header(20.0, |mut header| {
             for label in PATCH_LIST_COLUMNS.iter().copied() {

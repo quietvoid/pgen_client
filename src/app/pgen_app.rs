@@ -182,16 +182,18 @@ impl PGenApp {
         let can_edit_configs = !self.processing && !self.generator_state.listening;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.add_default_config(ctx, ui);
-            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                self.add_default_config(ctx, ui);
+                ui.separator();
 
-            ui.add_enabled_ui(can_edit_configs, |ui| {
-                self.add_output_info(ui);
-                self.add_pattern_config_grid(ui);
+                ui.add_enabled_ui(can_edit_configs, |ui| {
+                    self.add_output_info(ui);
+                    self.add_pattern_config_grid(ui);
+                });
+                ui.separator();
+
+                self.add_generators_ui(ctx, ui);
             });
-            ui.separator();
-
-            self.add_generators_ui(ctx, ui);
         });
     }
 
