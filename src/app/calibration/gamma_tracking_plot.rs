@@ -126,7 +126,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], cal_state: &CalibrationStat
 
     if !is_pq {
         let gamma_mean = target_eotf.mean();
-        let gamma_fmt = move |mark: GridMark, _max_digits, _range: &RangeInclusive<f64>| {
+        let gamma_fmt = move |mark: GridMark, _range: &RangeInclusive<f64>| {
             format!("{:.3}", mark.value + gamma_mean)
         };
         let gamma_label_fmt = move |_s: &str, point: &PlotPoint| {

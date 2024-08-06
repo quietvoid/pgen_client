@@ -88,7 +88,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                         .suffix(" s")
                         .max_decimals(2)
                         .speed(0.01)
-                        .clamp_range(0.5..=10.0),
+                        .range(0.5..=10.0),
                 );
                 app.cal_state.internal_gen.pattern_insertion_cfg.duration =
                     Duration::from_secs_f64(duration);
@@ -101,7 +101,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
                         .suffix(" %")
                         .max_decimals(2)
                         .speed(0.1)
-                        .clamp_range(0.0..=100.0),
+                        .range(0.0..=100.0),
                 );
                 app.cal_state.internal_gen.pattern_insertion_cfg.level = level / 100.0;
             });
@@ -246,7 +246,7 @@ fn add_target_config_ui(app: &mut PGenApp, ui: &mut Ui) {
                     .suffix(" nits")
                     .max_decimals(6)
                     .speed(0.0001)
-                    .clamp_range(0.0..=5.0),
+                    .range(0.0..=5.0),
             );
             if is_dragvalue_finished(min_y_res) {
                 app.cal_state.update_patterns_target();
@@ -259,7 +259,7 @@ fn add_target_config_ui(app: &mut PGenApp, ui: &mut Ui) {
                     .suffix(" nits")
                     .max_decimals(3)
                     .speed(0.1)
-                    .clamp_range(25.0..=10_000.0),
+                    .range(25.0..=10_000.0),
             );
             if is_dragvalue_finished(max_y_res) {
                 app.cal_state.update_patterns_target();
@@ -272,7 +272,7 @@ fn add_target_config_ui(app: &mut PGenApp, ui: &mut Ui) {
                     .suffix(" nits")
                     .max_decimals(3)
                     .speed(1.0)
-                    .clamp_range(400.0..=10_000.0),
+                    .range(400.0..=10_000.0),
             );
             if is_dragvalue_finished(max_mdl_res) {
                 app.cal_state.update_patterns_target();

@@ -53,7 +53,12 @@ async fn main() -> Result<()> {
         Box::new(move |cc| {
             // Set the global theme, default to dark mode
             let mut global_visuals = egui::style::Visuals::dark();
-            global_visuals.window_shadow = egui::epaint::Shadow::small_light();
+            global_visuals.window_shadow = egui::Shadow {
+                offset: egui::vec2(6.0, 10.0),
+                blur: 8.0,
+                spread: 0.0,
+                color: egui::Color32::from_black_alpha(25),
+            };
             cc.egui_ctx.set_visuals(global_visuals);
 
             let mut style = (*cc.egui_ctx.style()).clone();
@@ -72,7 +77,7 @@ async fn main() -> Result<()> {
                 })
                 .ok();
 
-            Box::new(app)
+            Ok(Box::new(app))
         }),
     );
 

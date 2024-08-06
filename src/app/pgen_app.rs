@@ -581,7 +581,7 @@ impl PGenApp {
                                 .update_while_editing(false)
                                 .suffix(" nits")
                                 .max_decimals(0)
-                                .clamp_range(0..=10_000),
+                                .range(0..=10_000),
                         );
                         ui.end_row();
                         if is_dragvalue_finished(max_mdl_res) {
@@ -599,7 +599,7 @@ impl PGenApp {
                                 .suffix(" nits")
                                 .max_decimals(5)
                                 .speed(0.0001)
-                                .clamp_range(0.0001..=0.0050),
+                                .range(0.0001..=0.0050),
                         );
                         hdr.min_mdl = (min_mdl * 10_000.0).round() as u16;
                         ui.end_row();
@@ -616,7 +616,7 @@ impl PGenApp {
                                 .update_while_editing(false)
                                 .suffix(" nits")
                                 .max_decimals(0)
-                                .clamp_range(0..=10_000),
+                                .range(0..=10_000),
                         );
                         ui.end_row();
                         if is_dragvalue_finished(maxcll_res) {
@@ -632,7 +632,7 @@ impl PGenApp {
                                 .update_while_editing(false)
                                 .suffix(" nits")
                                 .max_decimals(0)
-                                .clamp_range(0..=10_000),
+                                .range(0..=10_000),
                         );
                         ui.end_row();
                         if is_dragvalue_finished(maxfall_res) {
@@ -736,12 +736,12 @@ impl PGenApp {
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.patch_size.0)
                                 .update_while_editing(false)
-                                .clamp_range(0..=size_info.0),
+                                .range(0..=size_info.0),
                         );
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.patch_size.1)
                                 .update_while_editing(false)
-                                .clamp_range(0..=size_info.1),
+                                .range(0..=size_info.1),
                         );
                     });
                 }
@@ -766,12 +766,12 @@ impl PGenApp {
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.position.0)
                                 .update_while_editing(false)
-                                .clamp_range(0..=size_info.2),
+                                .range(0..=size_info.2),
                         );
                         ui.add(
                             egui::DragValue::new(&mut self.state.pattern_config.position.1)
                                 .update_while_editing(false)
-                                .clamp_range(0..=size_info.3),
+                                .range(0..=size_info.3),
                         );
                     });
                 }
@@ -786,7 +786,7 @@ impl PGenApp {
                         ui.add(
                             egui::DragValue::new(c)
                                 .update_while_editing(false)
-                                .clamp_range(rgb_range.clone()),
+                                .range(rgb_range.clone()),
                         );
                     });
                 });
@@ -801,7 +801,7 @@ impl PGenApp {
                         ui.add(
                             egui::DragValue::new(c)
                                 .update_while_editing(false)
-                                .clamp_range(rgb_range.clone()),
+                                .range(rgb_range.clone()),
                         );
                     });
                 });
