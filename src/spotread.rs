@@ -223,9 +223,25 @@ impl SpotreadProc {
         }
 
         let mut err = None;
+        let mut lines_res;
+
+        // We must loop while waiting for the measurement result or any error
+        loop {
+            lines_res = self.read_stdout_lines().await?;
+
+            // No read bytes
+            if lines_res.is_none() {
+                break;
+            }
+
+            // Actual non-empty line
+            if lines_res.as_ref().is_some_and(|lines| !lines.is_empty()) {
+                break;
+            }
+        }
 
         // Read result and rest of stdouf buffer
-        if let Some(lines) = self.read_stdout_lines().await? {
+        if let Some(lines) = lines_res {
             for line in lines {
                 if line.contains("XYZ:") {
                     let reading = ReadingResult::from_spotread_result(target, &line)?;
