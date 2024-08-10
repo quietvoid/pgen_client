@@ -12,6 +12,10 @@ jobs:
   build:
     name: Build artifacts
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
 
     strategy:
       fail-fast: false
@@ -31,7 +35,7 @@ jobs:
       - name: Get the version
         shell: bash
         run: |
-          echo "RELEASE_PKG_VERSION=$(cargo pkgid | cut -d# -f2 | cut -d: -f2)" >> $GITHUB_ENV
+          echo "RELEASE_PKG_VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].version')" >> $GITHUB_ENV
 
       - name: Build (Windows)
         run: cargo build --release
@@ -51,3 +55,8 @@ jobs:
         with:
           name: ${{ matrix.build }}
           path: ./${{ env.RELEASE_DIR }}
+
+      - name: Attest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ./${{ env.RELEASE_DIR }}/*
