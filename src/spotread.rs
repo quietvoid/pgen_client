@@ -272,6 +272,8 @@ impl SpotreadProc {
         }
 
         let output = std::str::from_utf8(&self.read_buf[..num_bytes])?;
+        log::trace!("spotread: Raw stdout {output:?}");
+
         let lines: Vec<String> = output
             .lines()
             .map(|e| e.trim())
