@@ -22,7 +22,7 @@ pub fn draw_gamma_tracking_plot(
         if cal_state.show_gamma_plot {
             let old_eotf = cal_state.eotf;
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                egui::ComboBox::from_id_source(egui::Id::new("cal_luminance_eotf"))
+                egui::ComboBox::from_id_salt(egui::Id::new("cal_luminance_eotf"))
                     .selected_text(cal_state.eotf.as_ref())
                     .show_ui(ui, |ui| {
                         ui.set_min_width(115.0);

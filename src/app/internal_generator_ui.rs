@@ -47,7 +47,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
 
             ui.label("Preset");
             ui.add_enabled_ui(!cal_started, |ui| {
-                egui::ComboBox::from_id_source("patch_list_presets")
+                egui::ComboBox::from_id_salt("patch_list_presets")
                     .selected_text(internal_gen.preset.as_ref())
                     .width(200.0)
                     .show_ui(ui, |ui| {
@@ -285,7 +285,7 @@ fn add_target_config_ui(app: &mut PGenApp, ui: &mut Ui) {
 
         let old_csp = app.cal_state.target_csp;
         ui.add_enabled_ui(!cal_started, |ui| {
-            egui::ComboBox::from_id_source("target_colorspaces")
+            egui::ComboBox::from_id_salt("target_colorspaces")
                 .selected_text(app.cal_state.target_csp.as_ref())
                 .width(150.0)
                 .show_ui(ui, |ui| {

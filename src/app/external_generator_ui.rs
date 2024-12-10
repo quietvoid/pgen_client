@@ -12,7 +12,7 @@ pub fn add_external_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
     ui.horizontal(|ui| {
         ui.label("Generator client");
         ui.add_enabled_ui(!app.generator_state.listening, |ui| {
-            egui::ComboBox::from_id_source(egui::Id::new("generator_client"))
+            egui::ComboBox::from_id_salt(egui::Id::new("generator_client"))
                 .selected_text(app.generator_state.client.as_ref())
                 .show_ui(ui, |ui| {
                     for client in GeneratorClient::iter() {

@@ -59,7 +59,6 @@ pub async fn handle_resolve_pattern_message(controller_tx: &Sender<PGenControlle
 }
 
 #[derive(Debug, Default, YaDeserialize)]
-#[yaserde(root = "calibration")]
 pub struct ResolvePattern {
     color: ResolveColor,
     background: ResolveColor,
@@ -69,26 +68,26 @@ pub struct ResolvePattern {
 
 #[derive(Debug, Default, YaDeserialize)]
 struct ResolveColor {
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     red: u16,
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     green: u16,
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     blue: u16,
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     bits: u8,
 }
 
 #[derive(Debug, Default, YaDeserialize)]
 #[allow(dead_code)]
 struct ResolveGeometry {
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     x: f32,
-    #[yaserde(attribute)]
+    #[yaserde(attribute = true)]
     y: f32,
-    #[yaserde(attribute, rename = "cx")]
+    #[yaserde(attribute = true, rename = "cx")]
     w: f32,
-    #[yaserde(attribute, rename = "cy")]
+    #[yaserde(attribute = true, rename = "cy")]
     h: f32,
 }
 

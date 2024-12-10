@@ -161,7 +161,7 @@ impl PGenApp {
     pub(crate) fn set_top_bar(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                egui::widgets::global_dark_light_mode_switch(ui);
+                egui::widgets::global_theme_preference_switch(ui);
                 if self.processing {
                     ui.add(egui::Spinner::new().size(26.0));
                 }
@@ -342,7 +342,7 @@ impl PGenApp {
                         let old_display_mode = pgen_info.current_display_mode;
                         ui.label("Display mode");
                         ui.add_enabled_ui(!is_dovi, |ui| {
-                            egui::ComboBox::from_id_source(egui::Id::new("out_display_mode"))
+                            egui::ComboBox::from_id_salt(egui::Id::new("out_display_mode"))
                                 .width(200.0)
                                 .selected_text(pgen_info.current_display_mode.to_string())
                                 .show_ui(ui, |ui| {
@@ -368,7 +368,7 @@ impl PGenApp {
                         let old_format = output_cfg.format;
                         ui.label("Color format");
                         ui.add_enabled_ui(!is_dovi, |ui| {
-                            egui::ComboBox::from_id_source(egui::Id::new("out_color_format"))
+                            egui::ComboBox::from_id_salt(egui::Id::new("out_color_format"))
                                 .width(125.0)
                                 .selected_text(output_cfg.format.as_ref())
                                 .show_ui(ui, |ui| {
@@ -391,7 +391,7 @@ impl PGenApp {
                         ui.add_enabled_ui(
                             output_cfg.format == ColorFormat::Rgb && !is_dovi,
                             |ui| {
-                                egui::ComboBox::from_id_source(egui::Id::new("out_quant_range"))
+                                egui::ComboBox::from_id_salt(egui::Id::new("out_quant_range"))
                                     .width(125.0)
                                     .selected_text(output_cfg.quant_range.as_ref())
                                     .show_ui(ui, |ui| {
@@ -416,7 +416,7 @@ impl PGenApp {
                         let old_bit_depth = output_cfg.bit_depth;
                         ui.label("Bit depth");
                         ui.add_enabled_ui(!is_dovi, |ui| {
-                            egui::ComboBox::from_id_source(egui::Id::new("out_max_bpc"))
+                            egui::ComboBox::from_id_salt(egui::Id::new("out_max_bpc"))
                                 .width(125.0)
                                 .selected_text(output_cfg.bit_depth.as_ref())
                                 .show_ui(ui, |ui| {
@@ -440,7 +440,7 @@ impl PGenApp {
                         let old_colorimetry = output_cfg.colorimetry;
                         ui.label("Colorimetry");
                         ui.add_enabled_ui(!is_dovi, |ui| {
-                            egui::ComboBox::from_id_source(egui::Id::new("out_colorimetry"))
+                            egui::ComboBox::from_id_salt(egui::Id::new("out_colorimetry"))
                                 .width(125.0)
                                 .selected_text(output_cfg.colorimetry.as_ref())
                                 .show_ui(ui, |ui| {
@@ -463,7 +463,7 @@ impl PGenApp {
 
                         let old_dynamic_range = output_cfg.dynamic_range;
                         ui.label("Dynamic range");
-                        egui::ComboBox::from_id_source(egui::Id::new("out_dynamic_range"))
+                        egui::ComboBox::from_id_salt(egui::Id::new("out_dynamic_range"))
                             .width(125.0)
                             .selected_text(output_cfg.dynamic_range.as_ref())
                             .show_ui(ui, |ui| {
@@ -487,7 +487,7 @@ impl PGenApp {
                         if is_dovi {
                             let old_dovi_map_mode = output_cfg.dovi_map_mode;
                             ui.label("DoVi mode");
-                            egui::ComboBox::from_id_source(egui::Id::new("out_dovi_map_mode"))
+                            egui::ComboBox::from_id_salt(egui::Id::new("out_dovi_map_mode"))
                                 .width(125.0)
                                 .selected_text(output_cfg.dovi_map_mode.as_ref())
                                 .show_ui(ui, |ui| {
@@ -537,7 +537,7 @@ impl PGenApp {
                     .show(ui, |ui| {
                         let old_eotf = hdr.eotf;
                         ui.label("EOTF");
-                        egui::ComboBox::from_id_source(egui::Id::new("hdr_eotf"))
+                        egui::ComboBox::from_id_salt(egui::Id::new("hdr_eotf"))
                             .width(200.0)
                             .selected_text(hdr.eotf.as_ref())
                             .show_ui(ui, |ui| {
@@ -555,7 +555,7 @@ impl PGenApp {
 
                         let old_primaries = hdr.primaries;
                         ui.label("Primaries");
-                        egui::ComboBox::from_id_source(egui::Id::new("hdr_primaries"))
+                        egui::ComboBox::from_id_salt(egui::Id::new("hdr_primaries"))
                             .width(200.0)
                             .selected_text(hdr.primaries.as_ref())
                             .show_ui(ui, |ui| {
@@ -697,7 +697,7 @@ impl PGenApp {
                 ui.label("Patch precision");
                 // DoVi cannot change from 8 bit patterns
                 ui.add_enabled_ui(!is_dovi, |ui| {
-                    egui::ComboBox::from_id_source(egui::Id::new("patch_depth_select"))
+                    egui::ComboBox::from_id_salt(egui::Id::new("patch_depth_select"))
                         .width(75.0)
                         .selected_text(self.state.pattern_config.bit_depth.as_ref())
                         .show_ui(ui, |ui| {
@@ -717,7 +717,7 @@ impl PGenApp {
                     .flatten();
 
                 ui.label("Patch size");
-                egui::ComboBox::from_id_source(egui::Id::new("preset_size_select"))
+                egui::ComboBox::from_id_salt(egui::Id::new("preset_size_select"))
                     .selected_text(self.state.pattern_config.preset_size.as_ref())
                     .show_ui(ui, |ui| {
                         ui.set_min_width(115.0);
@@ -748,7 +748,7 @@ impl PGenApp {
                 ui.end_row();
 
                 ui.label("Position");
-                egui::ComboBox::from_id_source(egui::Id::new("preset_position_select"))
+                egui::ComboBox::from_id_salt(egui::Id::new("preset_position_select"))
                     .selected_text(self.state.pattern_config.preset_position.as_ref())
                     .show_ui(ui, |ui| {
                         ui.set_min_width(115.0);
@@ -874,7 +874,7 @@ impl PGenApp {
                 && !self.cal_state.spotread_started
                 && !self.generator_state.listening;
             ui.add_enabled_ui(can_select_generator, |ui| {
-                egui::ComboBox::from_id_source(egui::Id::new("generator_type"))
+                egui::ComboBox::from_id_salt(egui::Id::new("generator_type"))
                     .selected_text(self.generator_type.as_ref())
                     .show_ui(ui, |ui| {
                         for gen_type in GeneratorType::iter() {
