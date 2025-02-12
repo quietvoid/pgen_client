@@ -461,7 +461,7 @@ impl PGenController {
         }
     }
 
-    pub async fn send_multiple_set_conf_commands<'a>(&mut self, commands: Vec<PGenSetConfCommand>) {
+    pub async fn send_multiple_set_conf_commands(&mut self, commands: Vec<PGenSetConfCommand>) {
         self.pgen_command(PGenCommand::MultipleSetConfCommands(commands))
             .await;
     }

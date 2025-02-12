@@ -344,8 +344,13 @@ fn add_patch_list_table(app: &mut PGenApp, ui: &mut Ui, avail_height: f32) {
                         vec2(ui.available_width(), ui.available_height() - 2.0),
                         Sense::hover(),
                     );
-                    ui.painter()
-                        .rect(rect, 0.0, patch_colour, Stroke::new(1.0, Color32::BLACK));
+                    ui.painter().rect(
+                        rect,
+                        0.0,
+                        patch_colour,
+                        Stroke::new(1.0, Color32::BLACK),
+                        egui::StrokeKind::Inside,
+                    );
                 });
                 for c in rgb_orig {
                     row.col(|ui| {
