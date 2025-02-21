@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use eframe::egui::{self, TextStyle};

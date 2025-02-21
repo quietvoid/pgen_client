@@ -205,10 +205,6 @@ pub enum DoviMapMode {
 
 impl From<bool> for QuantRange {
     fn from(v: bool) -> Self {
-        if v {
-            Self::Limited
-        } else {
-            Self::Full
-        }
+        if v { Self::Limited } else { Self::Full }
     }
 }

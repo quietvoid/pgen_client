@@ -24,7 +24,7 @@ pub mod utils;
 
 pub use pgen_app::PGenApp;
 
-pub use calibration::{compute_cie_chromaticity_diagram_worker, CalibrationState};
+pub use calibration::{CalibrationState, compute_cie_chromaticity_diagram_worker};
 
 #[derive(Debug)]
 pub struct PGenAppContext {

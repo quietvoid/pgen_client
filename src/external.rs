@@ -5,10 +5,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::{
     app::{PGenAppUpdate, ReadFileType},
     generators::{
-        start_tcp_generator_client, GeneratorClient, GeneratorClientCmd, GeneratorInterface,
+        GeneratorClient, GeneratorClientCmd, GeneratorInterface, start_tcp_generator_client,
     },
     pgen::controller::{PGenControllerCmd, PGenControllerHandle},
-    spotread::{start_spotread_worker, SpotreadCmd, SpotreadReadingConfig},
+    spotread::{SpotreadCmd, SpotreadReadingConfig, start_spotread_worker},
 };
 
 #[derive(Debug, Clone)]

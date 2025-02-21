@@ -1,19 +1,19 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use deltae::{DEMethod::DE2000, Delta, DeltaE};
 use itertools::Itertools;
 use kolor_64::{
+    ColorConversion, Vec3,
     details::{
         color::WhitePoint,
         transform::{self, XYZ_to_CIELAB, XYZ_to_xyY},
     },
-    ColorConversion, Vec3,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 use crate::utils::round_colour;
 
-use super::{xyz_to_cct, CalibrationTarget, LuminanceEotf, MyLab};
+use super::{CalibrationTarget, LuminanceEotf, MyLab, xyz_to_cct};
 
 static RESULT_XYZ_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"XYZ:\s(-?\d+\.\d+)\s(-?\d+\.\d+)\s(-?\d+\.\d+)").unwrap());
@@ -264,9 +264,9 @@ impl ReadingResult {
 #[cfg(test)]
 mod tests {
     use kolor_64::{
+        ColorConversion, Vec3,
         details::{color::WhitePoint, transform::XYZ_to_xyY},
         spaces::CIE_XYZ,
-        ColorConversion, Vec3,
     };
 
     use crate::{

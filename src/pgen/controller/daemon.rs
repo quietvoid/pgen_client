@@ -1,4 +1,4 @@
-use futures::{stream::StreamExt, FutureExt};
+use futures::{FutureExt, stream::StreamExt};
 use tokio::{sync::mpsc::Receiver, time::interval};
 use tokio_stream::wrappers::ReceiverStream;
 

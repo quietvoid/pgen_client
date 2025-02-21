@@ -2,21 +2,21 @@ use std::time::Duration;
 
 use eframe::{
     egui::{self, Context, Layout, RichText, Sense, TextEdit, Ui},
-    epaint::{vec2, Color32, Stroke, Vec2},
+    epaint::{Color32, Stroke, Vec2, vec2},
 };
 use egui_extras::{Column, TableBuilder};
 use kolor_64::details::{color::WhitePoint, transform::XYZ_to_xyY};
 use strum::IntoEnumIterator;
 
 use crate::{
-    calibration::{xyz_to_cct, TargetColorspace},
+    calibration::{TargetColorspace, xyz_to_cct},
     external::ExternalJobCmd,
     generators::internal::PatchListPreset,
     utils::rgb_10b_to_8b,
 };
 
 use super::{
-    status_color_active, utils::is_dragvalue_finished, CalibrationState, PGenApp, ReadFileType,
+    CalibrationState, PGenApp, ReadFileType, status_color_active, utils::is_dragvalue_finished,
 };
 
 const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];

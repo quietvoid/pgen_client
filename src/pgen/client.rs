@@ -7,11 +7,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use crate::utils::{compute_rgb_range, Rgb};
+use crate::utils::{Rgb, compute_rgb_range};
 
+use super::ColorFormat;
 use super::commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand, PGenSetConfCommand};
 use super::pattern_config::PGenPatternConfig;
-use super::ColorFormat;
 
 const PGEN_CMD_END_BYTE_STR: &str = "\x02\x0D";
 const PGEN_CMD_END_BYTES: &[u8] = PGEN_CMD_END_BYTE_STR.as_bytes();

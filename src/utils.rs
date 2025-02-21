@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use kolor_64::Vec3;
 
-use crate::pgen::{pattern_config::PGenPatternConfig, BitDepth};
+use crate::pgen::{BitDepth, pattern_config::PGenPatternConfig};
 
 pub type Rgb = [u16; 3];
 
@@ -166,7 +166,7 @@ pub fn normalize_float_rgb_components(rgb: Vec3) -> Vec3 {
 #[cfg(test)]
 mod tests {
     use crate::{
-        pgen::{pattern_config::PGenPatternConfig, BitDepth},
+        pgen::{BitDepth, pattern_config::PGenPatternConfig},
         utils::scale_pattern_config_rgb_values,
     };
 

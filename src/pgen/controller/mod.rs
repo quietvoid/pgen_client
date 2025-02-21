@@ -3,10 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::{Mutex, mpsc::Sender};
 
 use crate::app::PGenAppUpdate;
 
@@ -16,10 +16,10 @@ pub mod handler;
 pub use handler::PGenControllerHandle;
 
 use super::{
+    BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrMetadata, QuantRange,
     client::{ConnectState, PGenClient},
     commands::{PGenCommand, PGenSetConfCommand},
     pattern_config::PGenPatternConfig,
-    BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrMetadata, QuantRange,
 };
 
 #[derive(Debug)]

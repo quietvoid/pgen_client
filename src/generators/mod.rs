@@ -6,7 +6,7 @@ pub mod resolve;
 pub mod tcp_generator_client;
 
 pub use tcp_generator_client::{
-    start_tcp_generator_client, TcpGeneratorClient, TcpGeneratorInterface,
+    TcpGeneratorClient, TcpGeneratorInterface, start_tcp_generator_client,
 };
 
 #[derive(Debug, Default, Deserialize, Serialize, Clone, Copy)]

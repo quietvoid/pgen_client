@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use ecolor::{gamma_u8_from_linear_f32, Color32};
+use ecolor::{Color32, gamma_u8_from_linear_f32};
 use eframe::{
     egui::{Spinner, Ui},
     epaint::{ColorImage, Pos2, Rect, Stroke, Vec2},
@@ -8,13 +8,13 @@ use eframe::{
 use egui_plot::{MarkerShape, Plot, PlotImage, PlotPoint, PlotPoints, Points, Polygon};
 use itertools::Itertools;
 use kolor_64::{
+    ColorConversion,
     details::{color::WhitePoint, transform::xyY_to_XYZ},
     spaces::CIE_XYZ,
-    ColorConversion,
 };
 use ndarray::{
-    parallel::prelude::{IntoParallelRefIterator, ParallelIterator},
     Array,
+    parallel::prelude::{IntoParallelRefIterator, ParallelIterator},
 };
 use tokio::sync::mpsc::Sender;
 

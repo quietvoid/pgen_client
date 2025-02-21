@@ -125,8 +125,8 @@ pub fn xyz_to_cct(xyz: Vec3) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use kolor_64::{
-        details::{color::WhitePoint, transform::xyY_to_XYZ},
         Vec3,
+        details::{color::WhitePoint, transform::xyY_to_XYZ},
     };
 
     use crate::calibration::cct::xyz_to_cct;

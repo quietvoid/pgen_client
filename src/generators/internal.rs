@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumIter};
 
 use crate::{
-    calibration::{PatternInsertionConfig, ReadingResult, RGB_PRIMARIES, RGB_SECONDARIES},
+    calibration::{PatternInsertionConfig, RGB_PRIMARIES, RGB_SECONDARIES, ReadingResult},
     pgen::pattern_config::PGenPatternConfig,
-    utils::{get_rgb_real_range, Rgb},
+    utils::{Rgb, get_rgb_real_range},
 };
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]

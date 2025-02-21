@@ -2,19 +2,19 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
-use tokio::sync::mpsc::Sender;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 
 use crate::app::PGenAppUpdate;
 use crate::pgen::commands::PGenSetConfCommand;
 use crate::pgen::pattern_config::PGenPatternConfig;
+use crate::pgen::{BitDepth, Colorimetry, DoviMapMode, HdrEotf, Primaries, QuantRange};
 use crate::pgen::{
+    ColorFormat, DynamicRange,
     client::{PGenClient, PGenTestPattern},
     commands::{PGenCommand, PGenCommandResponse, PGenGetConfCommand},
-    ColorFormat, DynamicRange,
 };
-use crate::pgen::{BitDepth, Colorimetry, DoviMapMode, HdrEotf, Primaries, QuantRange};
 use crate::utils::scale_pattern_config_rgb_values;
 
 use super::{DisplayMode, PGenControllerContext, PGenControllerState};

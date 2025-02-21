@@ -3,9 +3,9 @@ use std::net::SocketAddr;
 use strum::{AsRefStr, Display};
 
 use super::{
+    BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
     client::{ConnectState, PGenTestPattern},
     controller::DisplayMode,
-    BitDepth, ColorFormat, Colorimetry, DoviMapMode, DynamicRange, HdrEotf, Primaries, QuantRange,
 };
 
 #[derive(Debug, Clone)]

@@ -6,7 +6,7 @@ use strum::IntoEnumIterator;
 
 use crate::{external::ExternalJobCmd, generators::GeneratorClient};
 
-use super::{status_color_active, PGenApp};
+use super::{PGenApp, status_color_active};
 
 pub fn add_external_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
     ui.horizontal(|ui| {
