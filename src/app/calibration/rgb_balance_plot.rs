@@ -35,7 +35,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
     } else {
         Color32::BLACK
     };
-    let ref_line = Line::new(ref_points).color(ref_color);
+    let ref_line = Line::new("Reference", ref_points).color(ref_color);
     let rgb_points: Vec<(f64, Vec3)> = results
         .iter()
         .filter(|res| res.is_white_stimulus_reading() && res.target.ref_rgb.x > 0.01)
@@ -51,20 +51,20 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
         .collect();
 
     let red_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[0]]).collect();
-    let red_line = Line::new(red_points.clone())
+    let red_line = Line::new("Red", red_points.clone())
         .color(Color32::RED)
         .highlight(true);
-    let red_markers = Points::new(red_points)
+    let red_markers = Points::new("Red", red_points)
         .shape(MarkerShape::Circle)
         .radius(2.0)
         .color(RED_MARKER_COLOR)
         .highlight(true);
 
     let green_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[1]]).collect();
-    let green_line = Line::new(green_points.clone())
+    let green_line = Line::new("Green", green_points.clone())
         .color(GREEN_LINE_COLOR)
         .highlight(true);
-    let green_markers = Points::new(green_points)
+    let green_markers = Points::new("Green", green_points)
         .shape(MarkerShape::Circle)
         .radius(2.0)
         .color(GREEN_MARKER_COLOR)
@@ -79,10 +79,10 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
         (Color32::BLUE, BLUE_MARKER_COLOR)
     };
     let blue_points: Vec<[f64; 2]> = rgb_points.iter().map(|(x, rgb)| [*x, rgb[2]]).collect();
-    let blue_line = Line::new(blue_points.clone())
+    let blue_line = Line::new("Blue", blue_points.clone())
         .color(blue_color)
         .highlight(true);
-    let blue_markers = Points::new(blue_points)
+    let blue_markers = Points::new("Blue", blue_points)
         .shape(MarkerShape::Circle)
         .radius(2.0)
         .color(blue_marker_color)

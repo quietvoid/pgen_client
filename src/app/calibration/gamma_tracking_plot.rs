@@ -66,7 +66,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], cal_state: &CalibrationStat
     let is_pq = target_eotf == LuminanceEotf::PQ;
     let max_pq = is_pq.then(|| target_eotf.oetf(cal_state.max_hdr_mdl / 10_000.0));
     let ref_pq_line = is_pq.then(|| {
-        Line::new(vec![[0.0, 0.0], [1.0, 1.0]])
+        Line::new("Ref PQ line", vec![[0.0, 0.0], [1.0, 1.0]])
             .color(ref_pq_color)
             .style(egui_plot::LineStyle::Dashed { length: 10.0 })
     });
@@ -92,7 +92,9 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], cal_state: &CalibrationStat
         })
         .collect();
 
-    let ref_line = Line::new(ref_points).color(ref_color).highlight(true);
+    let ref_line = Line::new("Ref line", ref_points)
+        .color(ref_color)
+        .highlight(true);
 
     let lum_points: Vec<[f64; 2]> = results
         .iter()
@@ -109,10 +111,10 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], cal_state: &CalibrationStat
         })
         .collect();
 
-    let lum_line = Line::new(lum_points.clone())
+    let lum_line = Line::new("Lum line", lum_points.clone())
         .color(lum_color)
         .highlight(true);
-    let lum_markers = Points::new(lum_points)
+    let lum_markers = Points::new("Lum points", lum_points)
         .shape(MarkerShape::Circle)
         .radius(2.5)
         .color(lum_color)

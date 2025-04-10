@@ -67,17 +67,18 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
         } else {
             Color32::from_rgba_unmultiplied(96, 96, 96, 96)
         };
-        let curve_poly = Polygon::new(PlotPoints::new(locis_points))
+        let curve_poly = Polygon::new("Curve", PlotPoints::new(locis_points))
             .fill_color(Color32::TRANSPARENT)
             .stroke(Stroke::new(4.0, curve_stroke_colour));
 
         let img_size = Vec2::new(XY_BOTTOM_RIGHT.x, XY_TOP_LEFT.y);
         let img_center = img_size / 2.0;
         let center_point = PlotPoint::new(img_center.x, img_center.y);
-        let image = PlotImage::new(texture.id(), center_point, img_size).uv(Rect::from_two_pos(
-            Pos2::new(0.0, 1.0 - XY_TOP_LEFT.y),
-            Pos2::new(XY_BOTTOM_RIGHT.x, 1.0),
-        ));
+        let image =
+            PlotImage::new("Image", texture.id(), center_point, img_size).uv(Rect::from_two_pos(
+                Pos2::new(0.0, 1.0 - XY_TOP_LEFT.y),
+                Pos2::new(XY_BOTTOM_RIGHT.x, 1.0),
+            ));
 
         let triangle_colour = if dark_mode {
             Color32::WHITE
@@ -86,7 +87,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
         };
         let target_csp = cal_state.target_csp.to_kolor();
         let target_primaries = target_csp.primaries().values().map(|xy| xy).to_vec();
-        let target_gamut_triangle = Polygon::new(target_primaries)
+        let target_gamut_triangle = Polygon::new("Target Gamut", target_primaries)
             .stroke(Stroke::new(2.0, triangle_colour))
             .fill_color(Color32::TRANSPARENT);
 
@@ -130,7 +131,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
                     let poly = xy_target
                         .stroke(Stroke::new(2.0, target_box_colour))
                         .fill_color(Color32::TRANSPARENT);
-                    let center_cross = Points::new(center)
+                    let center_cross = Points::new("Center", center)
                         .radius(12.0)
                         .color(Color32::BLACK)
                         .shape(MarkerShape::Cross);
@@ -140,8 +141,12 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
                 }
 
                 for (res_coords, measured_colour) in results_points {
-                    let point_out = Points::new(res_coords).radius(8.0).color(Color32::GRAY);
-                    let point_in = Points::new(res_coords).radius(5.0).color(measured_colour);
+                    let point_out = Points::new("Result out", res_coords)
+                        .radius(8.0)
+                        .color(Color32::GRAY);
+                    let point_in = Points::new("Result in", res_coords)
+                        .radius(5.0)
+                        .color(measured_colour);
 
                     plot_ui.points(point_out);
                     plot_ui.points(point_in);
@@ -255,12 +260,15 @@ fn create_target_box_for_result(
     let x = xyy[0];
     let y = xyy[1];
 
-    let poly = Polygon::new(vec![
-        [x + TARGET_BOX_LENGTH, y - TARGET_BOX_LENGTH],
-        [x - TARGET_BOX_LENGTH, y - TARGET_BOX_LENGTH],
-        [x - TARGET_BOX_LENGTH, y + TARGET_BOX_LENGTH],
-        [x + TARGET_BOX_LENGTH, y + TARGET_BOX_LENGTH],
-    ]);
+    let poly = Polygon::new(
+        "Target Box",
+        vec![
+            [x + TARGET_BOX_LENGTH, y - TARGET_BOX_LENGTH],
+            [x - TARGET_BOX_LENGTH, y - TARGET_BOX_LENGTH],
+            [x - TARGET_BOX_LENGTH, y + TARGET_BOX_LENGTH],
+            [x + TARGET_BOX_LENGTH, y + TARGET_BOX_LENGTH],
+        ],
+    );
 
     ([x, y], poly)
 }

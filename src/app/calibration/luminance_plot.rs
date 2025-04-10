@@ -67,7 +67,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, cal_state: &Calib
         })
         .collect();
 
-    let ref_line = Line::new(ref_points)
+    let ref_line = Line::new("Ref line", ref_points)
         .color(ref_color)
         .highlight(true)
         .style(egui_plot::LineStyle::Dashed { length: 10.0 });
@@ -83,10 +83,10 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, cal_state: &Calib
         })
         .collect();
 
-    let lum_line = Line::new(lum_points.clone())
+    let lum_line = Line::new("Lum line", lum_points.clone())
         .color(lum_color)
         .highlight(true);
-    let lum_markers = Points::new(lum_points)
+    let lum_markers = Points::new("Lum points", lum_points)
         .shape(MarkerShape::Circle)
         .radius(2.5)
         .color(lum_color)
