@@ -167,7 +167,7 @@ impl PGenApp {
                 }
                 ui.separator();
 
-                egui::menu::bar(ui, |ui| {
+                egui::MenuBar::new().ui(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("Exit").clicked() {
                             self.close();
@@ -932,18 +932,18 @@ impl PGenApp {
         self.state = state;
 
         // Adjust pattern config for output config
-        if let Some(out_cfg) = self.state.pgen_info.as_ref().map(|e| &e.output_config) {
-            if out_cfg.quant_range != prev_quant_range {
-                scale_pattern_config_rgb_values(
-                    &mut self.state.pattern_config,
-                    out_cfg.bit_depth as u8,
-                    prev_depth as u8,
-                    out_cfg.quant_range == QuantRange::Limited,
-                    prev_quant_range == QuantRange::Limited,
-                );
+        if let Some(out_cfg) = self.state.pgen_info.as_ref().map(|e| &e.output_config)
+            && out_cfg.quant_range != prev_quant_range
+        {
+            scale_pattern_config_rgb_values(
+                &mut self.state.pattern_config,
+                out_cfg.bit_depth as u8,
+                prev_depth as u8,
+                out_cfg.quant_range == QuantRange::Limited,
+                prev_quant_range == QuantRange::Limited,
+            );
 
-                self.update_controller_state();
-            }
+            self.update_controller_state();
         }
     }
 

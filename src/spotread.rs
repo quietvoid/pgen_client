@@ -59,15 +59,14 @@ pub fn start_spotread_worker(
             loop {
                 futures::select! {
                     err_line = spotread_proc.err_lines.next_line().fuse() => {
-                        if let Ok(Some(line)) = err_line {
-                            if line.starts_with("Diagnostic") {
+                        if let Ok(Some(line)) = err_line
+                            && line.starts_with("Diagnostic") {
                                 log::error!("spotread: Something failed: {line}");
                                 spotread_proc.exit_logged(false).await;
 
                                 app_tx.try_send(PGenAppUpdate::SpotreadStarted(false)).ok();
                                 bail!("Failed starting spotread");
                             }
-                        }
                     }
                     bytes = spotread_proc.reader.read_u8().fuse() => match bytes {
                         Ok(_) => break,
@@ -88,15 +87,14 @@ pub fn start_spotread_worker(
         loop {
             futures::select! {
                 err_line = spotread_proc.err_lines.next_line().fuse() => {
-                    if let Ok(Some(line)) = err_line {
-                        if line.starts_with("Diagnostic") {
+                    if let Ok(Some(line)) = err_line
+                        && line.starts_with("Diagnostic") {
                             log::error!("spotread: Something failed: {line}");
                             spotread_proc.exit_logged(false).await;
 
                             app_tx.try_send(PGenAppUpdate::SpotreadStarted(false)).ok();
                             break;
                         }
-                    }
                 }
                 msg = rx.select_next_some() => {
                     match msg {
@@ -213,12 +211,12 @@ impl SpotreadProc {
             self.writer.flush().await?;
         } else {
             // Flush stdout until we can read
-            if let Some(lines) = self.read_stdout_lines().await? {
-                if lines.iter().any(|e| e.contains("take a reading")) {
-                    // Take reading by sending enter
-                    self.writer.write_all("\n".as_bytes()).await?;
-                    self.writer.flush().await?;
-                }
+            if let Some(lines) = self.read_stdout_lines().await?
+                && lines.iter().any(|e| e.contains("take a reading"))
+            {
+                // Take reading by sending enter
+                self.writer.write_all("\n".as_bytes()).await?;
+                self.writer.flush().await?;
             }
         }
 

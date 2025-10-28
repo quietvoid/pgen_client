@@ -22,20 +22,14 @@ pub async fn handle_resolve_tcp_stream_message(tcp_stream: &mut TcpStream) -> io
     let mut header = [0; 4];
     let n = tcp_stream.try_read(&mut header)?;
     if n != 4 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Resolve: invalid header",
-        ));
+        return Err(io::Error::other("Resolve: invalid header"));
     }
 
     let msg_len = u32::from_be_bytes(header) as usize;
     let mut msg = vec![0_u8; msg_len];
     let n = tcp_stream.try_read(msg.as_mut())?;
     if n != msg_len {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Resolve: Failed reading packet",
-        ));
+        return Err(io::Error::other("Resolve: Failed reading packet"));
     }
 
     // Shouldn't fail

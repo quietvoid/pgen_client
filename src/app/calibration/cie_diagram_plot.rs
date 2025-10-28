@@ -1,8 +1,8 @@
 use std::sync::OnceLock;
 
-use ecolor::{Color32, gamma_u8_from_linear_f32};
+use ecolor::gamma_u8_from_linear_f32;
 use eframe::{
-    egui::{Spinner, Ui},
+    egui::{Color32, Spinner, Ui},
     epaint::{ColorImage, Pos2, Rect, Stroke, Vec2},
 };
 use egui_plot::{MarkerShape, Plot, PlotImage, PlotPoint, PlotPoints, Points, Polygon};
@@ -218,6 +218,7 @@ fn compute_cie_xy_diagram_image(points: &[[f64; 2]]) -> ColorImage {
 
     ColorImage {
         size: [resolution, resolution],
+        source_size: Vec2::new(resolution as f32, resolution as f32),
         pixels,
     }
 }
@@ -252,9 +253,9 @@ fn point_in_or_on_convex_polygon(points: &[[f64; 2]], x: f64, y: f64) -> bool {
 
 const TARGET_BOX_LENGTH: f64 = 0.0075;
 fn create_target_box_for_result(
-    res: &ReadingResult,
+    res: &'_ ReadingResult,
     target_rgb_to_xyz: ColorConversion,
-) -> ([f64; 2], Polygon) {
+) -> ([f64; 2], Polygon<'_>) {
     let xyy = res.ref_xyy_display_space(target_rgb_to_xyz);
 
     let x = xyy[0];
