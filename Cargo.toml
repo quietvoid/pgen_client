@@ -1,13 +1,13 @@
 [package]
 name = "pgen_client"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["quietvoid"]
 edition = "2024"
 rust-version = "1.88.0"
 license = "GPL-3.0"
 
 [dependencies]
-clap = { version = "4.5.50", features = ["derive", "wrap_help", "deprecated"] }
+clap = { version = "4.5.51", features = ["derive", "wrap_help", "deprecated"] }
 log = "0.4.28"
 regex = "*"
 once_cell = "*"
