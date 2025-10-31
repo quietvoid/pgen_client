@@ -3,7 +3,7 @@ use std::{iter::once, process::Stdio, time::Duration};
 use anyhow::{Result, anyhow, bail};
 use futures::{FutureExt, StreamExt};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter, Lines},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     sync::mpsc::Sender,
 };
@@ -17,13 +17,16 @@ use crate::{
     utils::pattern_cfg_set_colour_from_float_level,
 };
 
+const EXPECTED_INIT_LINE: &str = "Place instrument on spot to be measured";
+const READING_READY_SUBSTR: &str = "take a reading:";
+const READING_RESULT_SUBSTR: &str = "Result is XYZ";
+
 #[derive(Debug)]
 struct SpotreadProc {
     child: Child,
     err_lines: Lines<BufReader<ChildStderr>>,
 
-    reader: ChildStdout,
-    read_buf: Vec<u8>,
+    reader: BufReader<ChildStdout>,
     can_take_reading: bool,
     writer: BufWriter<ChildStdin>,
 
@@ -54,6 +57,7 @@ pub fn start_spotread_worker(
 
     let mut spotread_proc = tokio::task::block_in_place(|| {
         let mut spotread_proc = SpotreadProc::new(app_tx.clone(), cli_args)?;
+        let mut init_line = String::with_capacity(64);
 
         tokio::runtime::Handle::current().block_on(async {
             loop {
@@ -68,10 +72,17 @@ pub fn start_spotread_worker(
                                 bail!("Failed starting spotread");
                             }
                     }
-                    bytes = spotread_proc.reader.read_u8().fuse() => match bytes {
-                        Ok(_) => break,
+                    res = spotread_proc.reader.read_line(&mut init_line).fuse() => match res {
+                        Ok(_) => {
+                            if init_line.trim().contains(EXPECTED_INIT_LINE) {
+                                log::trace!("spotread init line: {init_line:?}");
+                                spotread_proc.read_until_take_reading_ready().await?;
+
+                                break;
+                            }
+                        },
                         Err(e) => {
-                            log::trace!("Failed reading: {e}");
+                            log::error!("spotread init: {e}");
                             tokio::time::sleep(Duration::from_secs(1)).await;
                             continue;
                         }
@@ -99,6 +110,10 @@ pub fn start_spotread_worker(
                 msg = rx.select_next_some() => {
                     match msg {
                         SpotreadCmd::DoReading(SpotreadReadingConfig { target, pattern_cfg, pattern_insertion_cfg }) => {
+                            // ready process stdout before sending patch
+                            // because the result must be sent asap and flushing stdout would delay result handling
+                            spotread_proc.read_until_take_reading_ready().await.ok();
+
                             {
                                 let mut controller = controller_handle.lock().await;
 
@@ -119,13 +134,11 @@ pub fn start_spotread_worker(
 
                             let res = tokio::time::timeout(Duration::from_secs(30), spotread_proc.try_measure(target)).await;
 
-                            let mut success = false;
                             match res {
                                 Ok(res) => {
                                     if let Err(e) = res {
+                                        app_tx.try_send(PGenAppUpdate::SpotreadRes(None)).ok();
                                         log::error!("spotread: Failed taking measure {e}");
-                                    } else {
-                                        success = true;
                                     }
                                 }
                                 Err(_) => {
@@ -133,9 +146,6 @@ pub fn start_spotread_worker(
                                 }
                             }
 
-                            if !success {
-                                app_tx.try_send(PGenAppUpdate::SpotreadRes(None)).ok();
-                            }
                             external_tx.try_send(ExternalJobCmd::SpotreadDoneMeasuring).ok();
                         },
                         SpotreadCmd::Exit => {
@@ -184,6 +194,7 @@ impl SpotreadProc {
             .stdout
             .take()
             .ok_or_else(|| anyhow!("child did not have a handle to stdout"))?;
+        let reader = BufReader::new(child_out);
 
         let child_in = child
             .stdin
@@ -194,8 +205,7 @@ impl SpotreadProc {
         Ok(Self {
             child,
             err_lines,
-            reader: child_out,
-            read_buf: vec![0; 512],
+            reader,
             writer,
             can_take_reading: false,
             app_tx,
@@ -203,83 +213,65 @@ impl SpotreadProc {
     }
 
     async fn try_measure(&mut self, target: CalibrationTarget) -> Result<()> {
-        if self.can_take_reading {
-            self.can_take_reading = false;
+        self.read_until_take_reading_ready().await?;
 
-            // Take reading by sending enter
-            self.writer.write_all("\n".as_bytes()).await?;
-            self.writer.flush().await?;
-        } else {
-            // Flush stdout until we can read
-            if let Some(lines) = self.read_stdout_lines().await?
-                && lines.iter().any(|e| e.contains("take a reading"))
-            {
-                // Take reading by sending enter
-                self.writer.write_all("\n".as_bytes()).await?;
-                self.writer.flush().await?;
-            }
-        }
+        // Take reading by sending enter
+        self.writer.write_all("\n".as_bytes()).await?;
+        self.writer.flush().await?;
 
-        let mut err = None;
-        let mut lines_res;
+        let mut line = String::with_capacity(32);
 
-        // We must loop while waiting for the measurement result or any error
         loop {
-            lines_res = self.read_stdout_lines().await?;
+            line.clear();
 
-            // No read bytes
-            if lines_res.is_none() {
-                break;
+            self.reader.read_line(&mut line).await?;
+
+            log::trace!("spotread: Raw output line: {line:?}");
+            let final_line = line.trim();
+
+            if final_line.is_empty() {
+                continue;
             }
 
-            // Actual non-empty line
-            if lines_res.as_ref().is_some_and(|lines| !lines.is_empty()) {
+            if final_line.starts_with(READING_RESULT_SUBSTR) {
+                let reading = ReadingResult::from_spotread_result(target, final_line)?;
+                self.app_tx
+                    .send(PGenAppUpdate::SpotreadRes(Some(reading)))
+                    .await
+                    .ok();
                 break;
+            } else if final_line.starts_with("Spot read failed") {
+                bail!(final_line.to_string());
             }
         }
 
-        // Read result and rest of stdouf buffer
-        if let Some(lines) = lines_res {
-            for line in lines {
-                if line.contains("XYZ:") {
-                    let reading = ReadingResult::from_spotread_result(target, &line)?;
-                    self.app_tx
-                        .send(PGenAppUpdate::SpotreadRes(Some(reading)))
-                        .await
-                        .ok();
-                } else if line.starts_with("Spot read failed") {
-                    err.replace(line.to_owned());
-                } else if line.contains("take a reading") {
-                    // Next reading won't need to read stdout
+        self.can_take_reading = false;
+
+        Ok(())
+    }
+
+    pub async fn read_until_take_reading_ready(&mut self) -> Result<()> {
+        if !self.can_take_reading {
+            loop {
+                let buf = self.reader.fill_buf().await?;
+                let len = buf.len();
+
+                let stdout = str::from_utf8(buf)?;
+
+                log::trace!("spotread read_until_take_reading_ready: {stdout:?}");
+
+                if stdout.trim().ends_with(READING_READY_SUBSTR) {
                     self.can_take_reading = true;
+                    self.reader.consume(len);
+
+                    log::debug!("spotread: ready to take reading");
+
+                    break;
                 }
             }
         }
 
-        if let Some(err) = err {
-            bail!(err);
-        } else {
-            Ok(())
-        }
-    }
-
-    async fn read_stdout_lines(&mut self) -> Result<Option<Vec<String>>> {
-        let num_bytes = self.reader.read(&mut self.read_buf).await?;
-        if num_bytes == 0 {
-            return Ok(None);
-        }
-
-        let output = std::str::from_utf8(&self.read_buf[..num_bytes])?;
-        log::trace!("spotread: Raw stdout {output:?}");
-
-        let lines: Vec<String> = output
-            .lines()
-            .map(|e| e.trim())
-            .filter(|e| !e.is_empty())
-            .map(|e| e.to_owned())
-            .collect();
-
-        Ok(Some(lines))
+        Ok(())
     }
 
     async fn exit_logged(self, interactive: bool) {
@@ -293,15 +285,26 @@ impl SpotreadProc {
     async fn exit(mut self, interactive: bool) -> Result<()> {
         if interactive {
             log::trace!("spotread: graceful interactive exit");
+
+            self.read_until_take_reading_ready().await?;
+
+            let mut out = String::with_capacity(32);
+
             self.writer.write_all("q\r\n".as_bytes()).await?;
             self.writer.flush().await?;
 
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            loop {
+                self.reader.read_line(&mut out).await?;
+
+                if !out.trim().is_empty() {
+                    break;
+                }
+            }
+
             self.writer.write_all("q\r\n".as_bytes()).await?;
             self.writer.flush().await?;
 
-            // Flush stdout to logs
-            self.read_stdout_lines().await?;
+            log::trace!("spotread exit output: {out:?}");
         }
 
         log::trace!("spotread: waiting for process to exit");

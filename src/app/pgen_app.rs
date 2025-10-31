@@ -163,7 +163,7 @@ impl PGenApp {
             ui.horizontal_wrapped(|ui| {
                 egui::widgets::global_theme_preference_switch(ui);
                 if self.processing {
-                    ui.add(egui::Spinner::new().size(26.0));
+                    ui.add(egui::Spinner::new().size(15.0));
                 }
                 ui.separator();
 
