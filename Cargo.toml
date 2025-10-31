@@ -36,6 +36,7 @@ ecolor = "*"
 kolor-64 = "0.1.9"
 deltae = "0.3.2"
 
-[profile.release]
-opt-level = 3
-strip = true
+[profile.release-deploy]
+inherits = "release"
+lto = "thin"
+strip = "symbols"
