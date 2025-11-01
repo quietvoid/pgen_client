@@ -27,6 +27,7 @@ struct SpotreadProc {
     err_lines: Lines<BufReader<ChildStderr>>,
 
     reader: BufReader<ChildStdout>,
+    read_buf: Vec<u8>,
     can_take_reading: bool,
     writer: BufWriter<ChildStdin>,
 
@@ -206,6 +207,7 @@ impl SpotreadProc {
             child,
             err_lines,
             reader,
+            read_buf: Vec::with_capacity(1024),
             writer,
             can_take_reading: false,
             app_tx,
@@ -252,17 +254,21 @@ impl SpotreadProc {
 
     pub async fn read_until_take_reading_ready(&mut self) -> Result<()> {
         if !self.can_take_reading {
+            self.read_buf.clear();
+
             loop {
                 let buf = self.reader.fill_buf().await?;
                 let len = buf.len();
 
-                let stdout = str::from_utf8(buf)?;
+                self.read_buf.extend_from_slice(buf);
+                self.reader.consume(len);
 
-                log::trace!("spotread read_until_take_reading_ready: {stdout:?}");
+                let stdout = str::from_utf8(&self.read_buf)?;
+
+                log::trace!("spotread read_until_take_reading_ready[{len}] {stdout:?}");
 
                 if stdout.trim().ends_with(READING_READY_SUBSTR) {
                     self.can_take_reading = true;
-                    self.reader.consume(len);
 
                     log::debug!("spotread: ready to take reading");
 
