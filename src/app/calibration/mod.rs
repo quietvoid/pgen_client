@@ -78,8 +78,6 @@ pub(crate) fn add_calibration_ui(app: &mut PGenApp, ui: &mut Ui) {
 }
 
 pub(crate) fn handle_spotread_result(app: &mut PGenApp, result: Option<ReadingResult>) {
-    log::info!("spotread: {result:?}");
-
     let internal_gen = &mut app.cal_state.internal_gen;
     if let Some(result) = result {
         if let Some(patch) = internal_gen.selected_patch_mut() {

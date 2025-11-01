@@ -66,7 +66,7 @@ pub fn start_spotread_worker(
                     err_line = spotread_proc.err_lines.next_line().fuse() => {
                         if let Ok(Some(line)) = err_line
                             && line.starts_with("Diagnostic") {
-                                log::error!("spotread: Something failed: {line}");
+                                log::error!("Something failed: {line}");
                                 spotread_proc.exit_logged(false).await;
 
                                 app_tx.try_send(PGenAppUpdate::SpotreadStarted(false)).ok();
@@ -76,14 +76,14 @@ pub fn start_spotread_worker(
                     res = spotread_proc.reader.read_line(&mut init_line).fuse() => match res {
                         Ok(_) => {
                             if init_line.trim().contains(EXPECTED_INIT_LINE) {
-                                log::trace!("spotread init line: {init_line:?}");
+                                log::trace!("init line: {init_line:?}");
                                 spotread_proc.read_until_take_reading_ready().await?;
 
                                 break;
                             }
                         },
                         Err(e) => {
-                            log::error!("spotread init: {e}");
+                            log::error!("init: {e}");
                             tokio::time::sleep(Duration::from_secs(1)).await;
                             continue;
                         }
@@ -101,7 +101,7 @@ pub fn start_spotread_worker(
                 err_line = spotread_proc.err_lines.next_line().fuse() => {
                     if let Ok(Some(line)) = err_line
                         && line.starts_with("Diagnostic") {
-                            log::error!("spotread: Something failed: {line}");
+                            log::error!("Something failed: {line}");
                             spotread_proc.exit_logged(false).await;
 
                             app_tx.try_send(PGenAppUpdate::SpotreadStarted(false)).ok();
@@ -139,7 +139,7 @@ pub fn start_spotread_worker(
                                 Ok(res) => {
                                     if let Err(e) = res {
                                         app_tx.try_send(PGenAppUpdate::SpotreadRes(None)).ok();
-                                        log::error!("spotread: Failed taking measure {e}");
+                                        log::error!("Failed taking measure {e}");
                                     }
                                 }
                                 Err(_) => {
@@ -150,7 +150,7 @@ pub fn start_spotread_worker(
                             external_tx.try_send(ExternalJobCmd::SpotreadDoneMeasuring).ok();
                         },
                         SpotreadCmd::Exit => {
-                            log::trace!("spotread: requested exit");
+                            log::trace!("requested exit");
                             spotread_proc.exit_logged(true).await;
 
                             app_tx.try_send(PGenAppUpdate::SpotreadStarted(false)).ok();
@@ -228,7 +228,7 @@ impl SpotreadProc {
 
             self.reader.read_line(&mut line).await?;
 
-            log::trace!("spotread: Raw output line: {line:?}");
+            log::trace!("Raw output line: {line:?}");
             let final_line = line.trim();
 
             if final_line.is_empty() {
@@ -237,6 +237,8 @@ impl SpotreadProc {
 
             if final_line.starts_with(READING_RESULT_SUBSTR) {
                 let reading = ReadingResult::from_spotread_result(target, final_line)?;
+                log::info!("{reading:?}");
+
                 self.app_tx
                     .send(PGenAppUpdate::SpotreadRes(Some(reading)))
                     .await
@@ -265,12 +267,12 @@ impl SpotreadProc {
 
                 let stdout = str::from_utf8(&self.read_buf)?;
 
-                log::trace!("spotread read_until_take_reading_ready[{len}] {stdout:?}");
+                log::trace!("read_until_take_reading_ready[{len}] {stdout:?}");
 
                 if stdout.trim().ends_with(READING_READY_SUBSTR) {
                     self.can_take_reading = true;
 
-                    log::debug!("spotread: ready to take reading");
+                    log::debug!("ready to take reading");
 
                     break;
                 }
@@ -282,15 +284,15 @@ impl SpotreadProc {
 
     async fn exit_logged(self, interactive: bool) {
         if let Err(e) = self.exit(interactive).await {
-            log::error!("spotread: Failed exiting program: {e}");
+            log::error!("Failed exiting program: {e}");
         } else {
-            log::trace!("spotread: process successfully exited");
+            log::trace!("process successfully exited");
         }
     }
 
     async fn exit(mut self, interactive: bool) -> Result<()> {
         if interactive {
-            log::trace!("spotread: graceful interactive exit");
+            log::trace!("graceful interactive exit");
 
             self.read_until_take_reading_ready().await?;
 
@@ -310,10 +312,10 @@ impl SpotreadProc {
             self.writer.write_all("q\r\n".as_bytes()).await?;
             self.writer.flush().await?;
 
-            log::trace!("spotread exit output: {out:?}");
+            log::trace!("exit output: {out:?}");
         }
 
-        log::trace!("spotread: waiting for process to exit");
+        log::trace!("waiting for process to exit");
         let status = self.child.wait().await?;
         if status.success() {
             Ok(())
