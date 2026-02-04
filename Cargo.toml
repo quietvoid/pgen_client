@@ -7,7 +7,7 @@ rust-version = "1.88.0"
 license = "GPL-3.0"
 
 [dependencies]
-clap = { version = "4.5.53", features = ["derive", "wrap_help", "deprecated"] }
+clap = { version = "4.5.57", features = ["derive", "wrap_help", "deprecated"] }
 log = "0.4.29"
 regex = "*"
 once_cell = "*"
@@ -15,17 +15,17 @@ pretty_env_logger = "0.5"
 clap-verbosity-flag = "3.0.4"
 anyhow = "1.0.100"
 itertools = "0.14.0"
-ndarray = { version = "0.17.1", features = ["rayon"] }
+ndarray = { version = "0.17.2", features = ["rayon"] }
 strum = { version = "0.27.2", features = ["derive"] }
 base64 = "0.22.1"
 csv = "1.4.0"
-rfd = "0.16.0"
+rfd = "0.17.2"
 serde = "1.0.228"
 serde_derive = "1.0.228"
 yaserde = { version = "0.12.0", features = ["yaserde_derive"] }
 
-tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }
-tokio-stream = "0.1.17"
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }
+tokio-stream = "0.1.18"
 futures = "0.3.31"
 async-stream = "0.3.6"
 
