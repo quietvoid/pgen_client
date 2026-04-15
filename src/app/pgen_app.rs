@@ -118,7 +118,7 @@ impl PGenApp {
         }
     }
 
-    pub(crate) fn check_responses(&mut self, egui_ctx: &Context) {
+    pub(crate) fn check_responses(&mut self, ui: &mut Ui) {
         while let Ok(msg) = self.ctx.rx.try_recv() {
             match msg {
                 PGenAppUpdate::InitialSetup {
@@ -142,7 +142,7 @@ impl PGenApp {
                     handle_spotread_result(self, result);
                 }
                 PGenAppUpdate::CieDiagramReady(image) => {
-                    self.cal_state.set_cie_texture(egui_ctx, image);
+                    self.cal_state.set_cie_texture(ui, image);
                 }
                 PGenAppUpdate::ReadFileResponse(file_type, data) => {
                     self.handle_read_file_response(file_type, data);
@@ -158,8 +158,8 @@ impl PGenApp {
         }
     }
 
-    pub(crate) fn set_top_bar(&mut self, ctx: &Context) {
-        egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
+    pub(crate) fn set_top_bar(&mut self, ui: &mut Ui) {
+        egui::Panel::top("top_bar").show_inside(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 egui::widgets::global_theme_preference_switch(ui);
                 if self.processing {
@@ -178,12 +178,12 @@ impl PGenApp {
         });
     }
 
-    pub(crate) fn set_central_panel(&mut self, ctx: &Context) {
+    pub(crate) fn set_central_panel(&mut self, ui: &mut Ui) {
         let can_edit_configs = !self.processing && !self.generator_state.listening;
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                self.add_default_config(ctx, ui);
+                self.add_default_config(ui);
                 ui.separator();
 
                 ui.add_enabled_ui(can_edit_configs, |ui| {
@@ -192,20 +192,20 @@ impl PGenApp {
                 });
                 ui.separator();
 
-                self.add_generators_ui(ctx, ui);
+                self.add_generators_ui(ui);
             });
         });
     }
 
-    pub(crate) fn set_right_panel(&mut self, ctx: &Context) {
+    pub(crate) fn set_right_panel(&mut self, ui: &mut Ui) {
         if self.generator_type.is_internal() {
-            egui::SidePanel::right("plots_panel").show(ctx, |ui| {
+            egui::Panel::right("plots_panel").show_inside(ui, |ui| {
                 add_calibration_ui(self, ui);
             });
         }
     }
 
-    fn add_default_config(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn add_default_config(&mut self, ui: &mut Ui) {
         let connected = self.state.connected_state.connected;
 
         ui.horizontal(|ui| {
@@ -259,7 +259,7 @@ impl PGenApp {
 
                     ui.label(status_str);
 
-                    let status_color = status_color_active(ctx, connected);
+                    let status_color = status_color_active(ui, connected);
                     let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
                     painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
 
@@ -866,7 +866,7 @@ impl PGenApp {
         }
     }
 
-    fn add_generators_ui(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn add_generators_ui(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.heading("Pattern generator");
 
@@ -890,11 +890,11 @@ impl PGenApp {
 
         match self.generator_type {
             GeneratorType::Internal => {
-                add_internal_generator_ui(self, ctx, ui);
+                add_internal_generator_ui(self, ui);
             }
             GeneratorType::External => {
                 ui.add_enabled_ui(!self.processing, |ui| {
-                    add_external_generator_ui(self, ctx, ui);
+                    add_external_generator_ui(self, ui);
                 });
             }
         }

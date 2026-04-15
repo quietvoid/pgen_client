@@ -61,10 +61,10 @@ async fn main() -> Result<()> {
             };
             cc.egui_ctx.set_visuals(global_visuals);
 
-            let mut style = (*cc.egui_ctx.style()).clone();
+            let mut style = (*cc.egui_ctx.global_style()).clone();
             style.text_styles.get_mut(&TextStyle::Body).unwrap().size = 16.0;
             style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 16.0;
-            cc.egui_ctx.set_style(style);
+            cc.egui_ctx.set_global_style(style);
 
             let saved_state = cc.storage.and_then(|storage| {
                 eframe::get_value::<PGenAppSavedState>(storage, eframe::APP_KEY)

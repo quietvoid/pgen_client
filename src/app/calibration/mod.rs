@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{Context, ScrollArea, TextureOptions, Ui},
+    egui::{ScrollArea, TextureOptions, Ui},
     epaint::{ColorImage, TextureHandle},
 };
 use kolor_64::ColorConversion;
@@ -122,9 +122,9 @@ impl CalibrationState {
         }
     }
 
-    pub fn set_cie_texture(&mut self, ctx: &Context, image: ColorImage) {
+    pub fn set_cie_texture(&mut self, ui: &mut Ui, image: ColorImage) {
         self.cie_texture.get_or_insert_with(|| {
-            ctx.load_texture("cie_xy_diagram_tex", image, TextureOptions::NEAREST)
+            ui.load_texture("cie_xy_diagram_tex", image, TextureOptions::NEAREST)
         });
     }
 

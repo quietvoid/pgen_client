@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use eframe::{
-    egui,
+    egui::Ui,
     epaint::{Color32, ColorImage},
 };
 use serde::{Deserialize, Serialize};
@@ -63,8 +63,8 @@ pub struct PGenAppSavedState {
     pub cal_state: CalibrationState,
 }
 
-fn status_color_active(ctx: &egui::Context, active: bool) -> Color32 {
-    let dark_mode = ctx.style().visuals.dark_mode;
+fn status_color_active(ui: &Ui, active: bool) -> Color32 {
+    let dark_mode = ui.global_style().visuals.dark_mode;
     if active {
         if dark_mode {
             Color32::DARK_GREEN

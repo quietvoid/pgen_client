@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use eframe::{
-    egui::{self, Context, Layout, RichText, Sense, TextEdit, Ui},
+    egui::{self, Layout, RichText, Sense, TextEdit, Ui},
     epaint::{Color32, Stroke, Vec2, vec2},
 };
 use egui_extras::{Column, TableBuilder};
@@ -21,7 +21,7 @@ use super::{
 
 const PATCH_LIST_COLUMNS: &[&str] = &["#", "Patch", "Red", "Green", "Blue"];
 
-pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
+pub fn add_internal_generator_ui(app: &mut PGenApp, ui: &mut Ui) {
     let cal_started = app.cal_state.internal_gen.started;
 
     ui.add_space(10.0);
@@ -35,7 +35,7 @@ pub fn add_internal_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
     );
 
     ui.add_space(5.0);
-    add_spotread_status_ui(app, ctx, ui);
+    add_spotread_status_ui(app, ui);
 
     ui.add_space(10.0);
     add_target_config_ui(app, ui);
@@ -175,7 +175,7 @@ fn add_spotread_cli_args_ui(app: &mut PGenApp, ui: &mut Ui) {
         });
 }
 
-fn add_spotread_status_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
+fn add_spotread_status_ui(app: &mut PGenApp, ui: &mut Ui) {
     let spotread_started = app.cal_state.spotread_started;
 
     ui.horizontal(|ui| {
@@ -204,7 +204,7 @@ fn add_spotread_status_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
                 }
             }
         });
-        let status_color = status_color_active(ctx, spotread_started);
+        let status_color = status_color_active(ui, spotread_started);
         let (res, painter) = ui.allocate_painter(Vec2::new(16.0, 16.0), Sense::hover());
         painter.circle(res.rect.center(), 8.0, status_color, Stroke::NONE);
 

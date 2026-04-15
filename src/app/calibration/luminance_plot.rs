@@ -33,7 +33,7 @@ fn draw_plot(ui: &mut Ui, results: &[ReadingResult], min: f64, cal_state: &Calib
     let target_eotf = cal_state.eotf;
     let oetf = cal_state.oetf;
 
-    let dark_mode = ui.ctx().style().visuals.dark_mode;
+    let dark_mode = ui.global_style().visuals.dark_mode;
     let ref_color = if dark_mode {
         Color32::GRAY
     } else {

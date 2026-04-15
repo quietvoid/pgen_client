@@ -3,13 +3,9 @@ use eframe::egui::{self, Key};
 use super::{PGenApp, PGenAppSavedState};
 
 impl eframe::App for PGenApp {
-    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        visuals.window_fill().to_normalized_gamma_f32()
-    }
-
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         if !self.requested_close && !self.allowed_to_close {
-            let close_requested = ctx.input(|i| {
+            let close_requested = ui.input(|i| {
                 i.viewport().close_requested()
                     || i.key_pressed(Key::Q)
                     || i.key_pressed(Key::Escape)
@@ -17,15 +13,15 @@ impl eframe::App for PGenApp {
 
             if close_requested {
                 self.close();
-                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                ui.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             }
         }
 
-        self.set_top_bar(ctx);
-        self.set_right_panel(ctx);
-        self.set_central_panel(ctx);
+        self.set_top_bar(ui);
+        self.set_right_panel(ui);
+        self.set_central_panel(ui);
 
-        self.check_responses(ctx);
+        self.check_responses(ui);
 
         if self.requested_close && self.allowed_to_close {
             self.requested_close = false;
@@ -35,12 +31,16 @@ impl eframe::App for PGenApp {
                 save_config(self, storage);
             }
 
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            ui.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         save_config(self, storage);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.window_fill().to_normalized_gamma_f32()
     }
 }
 

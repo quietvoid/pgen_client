@@ -27,7 +27,7 @@ pub fn draw_rgb_balance_plot(
 }
 
 fn draw_plot(ui: &mut Ui, results: &[ReadingResult]) {
-    let dark_mode = ui.ctx().style().visuals.dark_mode;
+    let dark_mode = ui.global_style().visuals.dark_mode;
 
     let ref_points: Vec<[f64; 2]> = (0..255).map(|i| [i as f64 / 255.0, 0.0]).collect();
     let ref_color = if dark_mode {

@@ -59,7 +59,7 @@ fn draw_diagram(ui: &mut Ui, cal_state: &mut CalibrationState, results: &[Readin
         cal_state.cie_texture.as_ref(),
         CIE_1931_DIAGRAM_POINTS.get(),
     ) {
-        let dark_mode = ui.ctx().style().visuals.dark_mode;
+        let dark_mode = ui.global_style().visuals.dark_mode;
         let locis_points: Vec<_> = locis_points.iter().map(|e| [e.x, e.y]).collect();
 
         let curve_stroke_colour = if dark_mode {

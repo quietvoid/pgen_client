@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{self, Context, Sense, Stroke, Ui},
+    egui::{self, Sense, Stroke, Ui},
     epaint::Vec2,
 };
 use strum::IntoEnumIterator;
@@ -8,7 +8,7 @@ use crate::{external::ExternalJobCmd, generators::GeneratorClient};
 
 use super::{PGenApp, status_color_active};
 
-pub fn add_external_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) {
+pub fn add_external_generator_ui(app: &mut PGenApp, ui: &mut Ui) {
     ui.horizontal(|ui| {
         ui.label("Generator client");
         ui.add_enabled_ui(!app.generator_state.listening, |ui| {
@@ -30,7 +30,7 @@ pub fn add_external_generator_ui(app: &mut PGenApp, ctx: &Context, ui: &mut Ui) 
         } else {
             "Start generator client"
         };
-        let status_color = status_color_active(ctx, app.generator_state.listening);
+        let status_color = status_color_active(ui, app.generator_state.listening);
         ui.add_enabled_ui(app.state.connected_state.connected, |ui| {
             if ui.button(generator_label).clicked() {
                 let cmd = if app.generator_state.listening {
