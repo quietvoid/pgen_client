@@ -51,20 +51,27 @@ async fn main() -> Result<()> {
         "pgen_client",
         eframe::NativeOptions::default(),
         Box::new(move |cc| {
-            // Set the global theme, default to dark mode
-            let mut global_visuals = egui::style::Visuals::dark();
-            global_visuals.window_shadow = egui::Shadow {
+            let shadow = egui::Shadow {
                 offset: [6, 10],
                 blur: 8,
                 spread: 0,
                 color: egui::Color32::from_black_alpha(25),
             };
-            cc.egui_ctx.set_visuals(global_visuals);
 
-            let mut style = (*cc.egui_ctx.global_style()).clone();
-            style.text_styles.get_mut(&TextStyle::Body).unwrap().size = 16.0;
-            style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 16.0;
-            cc.egui_ctx.set_global_style(style);
+            let mut dark_visuals = egui::style::Visuals::dark();
+            dark_visuals.window_shadow = shadow;
+
+            let mut light_visuals = egui::style::Visuals::light();
+            light_visuals.window_shadow = shadow;
+
+            cc.egui_ctx.set_visuals_of(egui::Theme::Dark, dark_visuals);
+            cc.egui_ctx
+                .set_visuals_of(egui::Theme::Light, light_visuals);
+
+            cc.egui_ctx.all_styles_mut(|style| {
+                style.text_styles.get_mut(&TextStyle::Body).unwrap().size = 16.0;
+                style.text_styles.get_mut(&TextStyle::Button).unwrap().size = 16.0;
+            });
 
             let saved_state = cc.storage.and_then(|storage| {
                 eframe::get_value::<PGenAppSavedState>(storage, eframe::APP_KEY)
