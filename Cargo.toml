@@ -7,7 +7,7 @@ rust-version = "1.88.0"
 license = "GPL-3.0"
 
 [dependencies]
-clap = { version = "4.6.0", features = ["derive", "wrap_help", "deprecated"] }
+clap = { version = "4.6.1", features = ["derive", "wrap_help", "deprecated"] }
 log = "0.4.29"
 regex = "*"
 once_cell = "*"
@@ -24,7 +24,7 @@ serde = "1.0.228"
 serde_derive = "1.0.228"
 yaserde = { version = "0.12.0", features = ["yaserde_derive"] }
 
-tokio = { version = "1.52.0", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "process"] }
 tokio-stream = "0.1.18"
 futures = "0.3.32"
 async-stream = "0.3.6"
